@@ -1,0 +1,16 @@
+{
+  "app": "GREEN BOX",
+  "type": "green-box-public-data",
+  "version": 1,
+  "publishedAt": null,
+  "data": {
+    "components": [],
+    "costs": {
+      "caseCost": "",
+      "laborCost": "",
+      "otherCost": ""
+    },
+    "margin": "",
+    "productionQty": 1
+  }
+}

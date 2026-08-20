@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GREEN BOX | Costos y precio de venta</title>
+    <meta
+      name="description"
+      content="Aplicacion local para calcular costos, precio de venta y simulaciones de produccion de GREEN BOX."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Automatizacion y monitoreo</p>
+          <h1>GREEN BOX</h1>
+        </div>
+        <div class="storage-pill" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="storageStatusText">Guardado local</span>
+        </div>
+      </header>
+
+      <section class="summary-grid" aria-label="Resumen principal">
+        <article class="summary-card">
+          <span>Costo unitario</span>
+          <strong id="summaryUnitCost">$ 0,00</strong>
+        </article>
+        <article class="summary-card">
+          <span>Precio de venta</span>
+          <strong id="summarySalePrice">$ 0,00</strong>
+        </article>
+        <article class="summary-card">
+          <span>Ganancia unitaria</span>
+          <strong id="summaryProfit">$ 0,00</strong>
+        </article>
+        <article class="summary-card accent">
+          <span>Margen</span>
+          <strong id="summaryMargin">0%</strong>
+        </article>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="panel component-panel" aria-labelledby="componentsTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">Materiales</p>
+              <h2 id="componentsTitle">Componentes</h2>
+            </div>
+            <button class="ghost-button" type="button" id="clearComponentsBtn">
+              Vaciar lista
+            </button>
+          </div>
+
+          <form class="component-form" id="componentForm" autocomplete="off">
+            <input type="hidden" id="componentId" />
+
+            <label>
+              <span>Nombre del componente</span>
+              <input id="componentName" type="text" placeholder="Ej.: sensor, placa, cable" />
+            </label>
+
+            <div class="form-row">
+              <label>
+                <span>Cantidad por Green Box</span>
+                <input id="componentQty" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Precio unitario</span>
+                <input id="componentPrice" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+
+            <label>
+              <span>Proveedor</span>
+              <input id="componentSupplier" type="text" placeholder="Proveedor" />
+            </label>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="saveComponentBtn">
+                Agregar componente
+              </button>
+              <button class="secondary-button hidden" type="button" id="cancelEditBtn">
+                Cancelar edicion
+              </button>
+            </div>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th>Cantidad</th>
+                  <th>Precio unitario</th>
+                  <th>Proveedor</th>
+                  <th>Costo</th>
+                  <th class="action-col">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="componentsTableBody">
+                <tr>
+                  <td colspan="6" class="empty-row">Sin componentes cargados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel" aria-labelledby="costsTitle">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Produccion</p>
+                <h2 id="costsTitle">Costos variables</h2>
+              </div>
+            </div>
+
+            <div class="cost-fields">
+              <label>
+                <span>Costo de impresion 3D</span>
+                <input id="caseCost" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Armado y mano de obra</span>
+                <input id="laborCost" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Otros costos variables</span>
+                <input id="otherCost" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+
+            <div class="totals-list">
+              <div>
+                <span>Costo total componentes</span>
+                <strong id="componentsTotal">$ 0,00</strong>
+              </div>
+              <div class="total-line">
+                <span>Costo total fabricacion</span>
+                <strong id="manufacturingTotal">$ 0,00</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="saleTitle">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Comercial</p>
+                <h2 id="saleTitle">Precio de venta</h2>
+              </div>
+            </div>
+
+            <label class="margin-control">
+              <span>Margen deseado</span>
+              <div class="margin-inputs">
+                <input id="marginRange" type="range" min="0" max="95" step="1" value="0" />
+                <input id="marginInput" type="number" min="0" max="95" step="1" inputmode="numeric" />
+                <span>%</span>
+              </div>
+            </label>
+
+            <div class="result-grid">
+              <div>
+                <span>Precio de venta</span>
+                <strong id="salePrice">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Ganancia por unidad</span>
+                <strong id="unitProfit">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Margen porcentual</span>
+                <strong id="actualMargin">0%</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="simulatorTitle">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Escenarios</p>
+                <h2 id="simulatorTitle">Simulador de produccion</h2>
+              </div>
+            </div>
+
+            <label>
+              <span>Cantidad a fabricar</span>
+              <select id="productionQty">
+                <option value="1">1 Green Box</option>
+                <option value="10">10 Green Box</option>
+                <option value="25">25 Green Box</option>
+                <option value="50">50 Green Box</option>
+                <option value="100">100 Green Box</option>
+              </select>
+            </label>
+
+            <div class="result-grid production-results">
+              <div>
+                <span>Inversion necesaria</span>
+                <strong id="requiredInvestment">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Facturacion estimada</span>
+                <strong id="estimatedRevenue">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Ganancia total estimada</span>
+                <strong id="estimatedProfit">$ 0,00</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="backupTitle">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Datos</p>
+                <h2 id="backupTitle">Backup</h2>
+              </div>
+            </div>
+
+            <div class="backup-actions">
+              <button class="primary-button" type="button" id="exportBackupBtn">
+                Exportar backup
+              </button>
+              <button class="secondary-button" type="button" id="exportPublicDataBtn">
+                Exportar para GitHub
+              </button>
+              <button class="secondary-button" type="button" id="importBackupBtn">
+                Importar backup
+              </button>
+              <input
+                class="hidden"
+                id="importBackupInput"
+                type="file"
+                accept="application/json,.json"
+              />
+            </div>
+            <p class="backup-status" id="backupStatus" aria-live="polite"></p>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

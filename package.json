@@ -1,0 +1,18 @@
+{
+  "name": "green-box-costos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplicacion de costos Green Box con persistencia en Neon PostgreSQL.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node --check server.js && node --check script.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
