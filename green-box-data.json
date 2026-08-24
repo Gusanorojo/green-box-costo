@@ -1,16 +1,42 @@
 {
   "app": "GREEN BOX",
   "type": "green-box-public-data",
-  "version": 1,
+  "version": 2,
   "publishedAt": null,
   "data": {
+    "version": 2,
     "components": [],
-    "costs": {
+    "printing": {
+      "filament": {
+        "name": "",
+        "spoolPrice": "",
+        "spoolWeightGrams": ""
+      },
+      "pieces": [],
+      "wastePercent": "",
+      "legacyManualCost": ""
+    },
+    "supplies": [],
+    "labor": [],
+    "packaging": [],
+    "adjustments": {
+      "wastePercent": "",
+      "warrantyPercent": ""
+    },
+    "monthlyCosts": [],
+    "pricing": {
+      "mode": "manual",
+      "manualPrice": "",
+      "targetMarkupPercent": "",
+      "targetMarginPercent": ""
+    },
+    "simulator": {
+      "quantity": 1
+    },
+    "legacyCosts": {
       "caseCost": "",
       "laborCost": "",
       "otherCost": ""
-    },
-    "margin": "",
-    "productionQty": 1
+    }
   }
 }

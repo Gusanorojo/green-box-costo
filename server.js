@@ -9,16 +9,63 @@ const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL;
 const WRITE_KEY = process.env.GREEN_BOX_WRITE_KEY || "";
 const STATE_ID = "main";
+const CURRENT_VERSION = 2;
+const SUPPLY_UNITS = [
+  "unidad",
+  "metro",
+  "centimetro",
+  "gramo",
+  "kilogramo",
+  "paquete",
+  "rollo",
+  "otro",
+];
+const MONTHLY_CATEGORIES = [
+  "Infraestructura",
+  "Software",
+  "Marketing",
+  "Administracion",
+  "Servicios",
+  "Otros",
+];
+const PERIODICITIES = ["monthly", "annual"];
+const PRICING_MODES = ["manual", "markup", "margin"];
 
 const defaultState = {
+  version: CURRENT_VERSION,
   components: [],
-  costs: {
+  printing: {
+    filament: {
+      name: "",
+      spoolPrice: "",
+      spoolWeightGrams: "",
+    },
+    pieces: [],
+    wastePercent: "",
+    legacyManualCost: "",
+  },
+  supplies: [],
+  labor: [],
+  packaging: [],
+  adjustments: {
+    wastePercent: "",
+    warrantyPercent: "",
+  },
+  monthlyCosts: [],
+  pricing: {
+    mode: "manual",
+    manualPrice: "",
+    targetMarkupPercent: "",
+    targetMarginPercent: "",
+  },
+  simulator: {
+    quantity: 1,
+  },
+  legacyCosts: {
     caseCost: "",
     laborCost: "",
     otherCost: "",
   },
-  margin: "",
-  productionQty: 1,
 };
 
 const staticFiles = new Map([
@@ -153,30 +200,180 @@ function normalizeState(input) {
     throw new Error("Estado invalido.");
   }
 
+  if (
+    data.version === CURRENT_VERSION ||
+    data.printing ||
+    data.supplies ||
+    data.labor ||
+    data.packaging ||
+    data.monthlyCosts ||
+    data.pricing ||
+    data.adjustments
+  ) {
+    return normalizeVersionTwoState(data);
+  }
+
+  return migrateLegacyState(data);
+}
+
+function normalizeVersionTwoState(data) {
   return {
-    components: Array.isArray(data.components)
-      ? data.components.map((component) => ({
-          id: String(component.id || cryptoSafeId()),
-          name: String(component.name ?? "").trim(),
-          quantity: String(component.quantity ?? ""),
-          unitPrice: String(component.unitPrice ?? ""),
-          supplier: String(component.supplier ?? "").trim(),
+    version: CURRENT_VERSION,
+    components: normalizeComponents(data.components),
+    printing: {
+      filament: {
+        name: cleanString(data.printing?.filament?.name),
+        spoolPrice: cleanString(data.printing?.filament?.spoolPrice),
+        spoolWeightGrams: cleanString(data.printing?.filament?.spoolWeightGrams),
+      },
+      pieces: Array.isArray(data.printing?.pieces)
+        ? data.printing.pieces.map((piece) => ({
+            id: cleanString(piece.id) || cryptoSafeId("piece"),
+            name: cleanString(piece.name),
+            quantity: cleanString(piece.quantity),
+            weightGrams: cleanString(piece.weightGrams),
+          }))
+        : [],
+      wastePercent: cleanString(data.printing?.wastePercent),
+      legacyManualCost: cleanString(data.printing?.legacyManualCost),
+    },
+    supplies: Array.isArray(data.supplies)
+      ? data.supplies.map((supply) => ({
+          id: cleanString(supply.id) || cryptoSafeId("supply"),
+          name: cleanString(supply.name),
+          quantity: cleanString(supply.quantity),
+          unit: SUPPLY_UNITS.includes(supply.unit) ? supply.unit : "unidad",
+          unitPrice: cleanString(supply.unitPrice),
+          supplier: cleanString(supply.supplier),
         }))
       : [],
-    costs: {
-      caseCost: String(data.costs?.caseCost ?? ""),
-      laborCost: String(data.costs?.laborCost ?? ""),
-      otherCost: String(data.costs?.otherCost ?? ""),
+    labor: Array.isArray(data.labor)
+      ? data.labor.map((task) => ({
+          id: cleanString(task.id) || cryptoSafeId("labor"),
+          name: cleanString(task.name),
+          hours: cleanString(task.hours),
+          hourlyRate: cleanString(task.hourlyRate),
+          responsible: cleanString(task.responsible),
+        }))
+      : [],
+    packaging: Array.isArray(data.packaging)
+      ? data.packaging.map((item) => ({
+          id: cleanString(item.id) || cryptoSafeId("packaging"),
+          name: cleanString(item.name),
+          quantity: cleanString(item.quantity),
+          unitPrice: cleanString(item.unitPrice),
+          supplier: cleanString(item.supplier),
+        }))
+      : [],
+    adjustments: {
+      wastePercent: cleanString(data.adjustments?.wastePercent),
+      warrantyPercent: cleanString(data.adjustments?.warrantyPercent),
     },
-    margin: String(data.margin ?? ""),
-    productionQty: [1, 10, 25, 50, 100].includes(Number(data.productionQty))
-      ? Number(data.productionQty)
-      : 1,
+    monthlyCosts: Array.isArray(data.monthlyCosts)
+      ? data.monthlyCosts.map((cost) => ({
+          id: cleanString(cost.id) || cryptoSafeId("monthly"),
+          concept: cleanString(cost.concept),
+          category: MONTHLY_CATEGORIES.includes(cost.category)
+            ? cost.category
+            : "Otros",
+          amount: cleanString(cost.amount),
+          periodicity: PERIODICITIES.includes(cost.periodicity)
+            ? cost.periodicity
+            : "monthly",
+        }))
+      : [],
+    pricing: {
+      mode: PRICING_MODES.includes(data.pricing?.mode) ? data.pricing.mode : "manual",
+      manualPrice: cleanString(data.pricing?.manualPrice),
+      targetMarkupPercent: cleanString(data.pricing?.targetMarkupPercent),
+      targetMarginPercent: cleanString(data.pricing?.targetMarginPercent),
+    },
+    simulator: {
+      quantity: positiveNumber(data.simulator?.quantity) || 1,
+    },
+    legacyCosts: {
+      caseCost: cleanString(data.legacyCosts?.caseCost),
+      laborCost: cleanString(data.legacyCosts?.laborCost),
+      otherCost: cleanString(data.legacyCosts?.otherCost),
+    },
   };
 }
 
-function cryptoSafeId() {
-  return `component-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function migrateLegacyState(data) {
+  const migrated = normalizeVersionTwoState({
+    version: CURRENT_VERSION,
+    components: data.components,
+    simulator: {
+      quantity: data.productionQty,
+    },
+  });
+  const caseCost = cleanString(data.costs?.caseCost);
+  const laborCost = cleanString(data.costs?.laborCost);
+  const otherCost = cleanString(data.costs?.otherCost);
+  const margin = cleanString(data.margin);
+
+  migrated.legacyCosts = {
+    caseCost,
+    laborCost,
+    otherCost,
+  };
+
+  if (positiveNumber(caseCost) > 0) {
+    migrated.printing.legacyManualCost = caseCost;
+  }
+
+  if (positiveNumber(laborCost) > 0) {
+    migrated.labor.push({
+      id: cryptoSafeId("labor"),
+      name: "Mano de obra migrada",
+      hours: "1",
+      hourlyRate: laborCost,
+      responsible: "",
+    });
+  }
+
+  if (positiveNumber(otherCost) > 0) {
+    migrated.supplies.push({
+      id: cryptoSafeId("supply"),
+      name: "Otros costos variables migrados",
+      quantity: "1",
+      unit: "otro",
+      unitPrice: otherCost,
+      supplier: "",
+    });
+  }
+
+  if (margin !== "") {
+    migrated.pricing.mode = "margin";
+    migrated.pricing.targetMarginPercent = String(Math.min(positiveNumber(margin), 99.99));
+  }
+
+  return migrated;
+}
+
+function normalizeComponents(components) {
+  return Array.isArray(components)
+    ? components.map((component) => ({
+        id: cleanString(component.id) || cryptoSafeId("component"),
+        name: cleanString(component.name),
+        quantity: cleanString(component.quantity),
+        unitPrice: cleanString(component.unitPrice),
+        supplier: cleanString(component.supplier),
+      }))
+    : [];
+}
+
+function cleanString(value) {
+  return String(value ?? "").trim();
+}
+
+function positiveNumber(value) {
+  const number = Number(cleanString(value).replace(",", "."));
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function cryptoSafeId(prefix = "record") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function canWrite(request) {

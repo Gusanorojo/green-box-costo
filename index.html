@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GREEN BOX | Costos y precio de venta</title>
+    <title>GREEN BOX V1 | Costos y rentabilidad</title>
     <meta
       name="description"
-      content="Aplicacion local para calcular costos, precio de venta y simulaciones de produccion de GREEN BOX."
+      content="Aplicacion local para calcular costos de fabricacion, precio de venta y rentabilidad de GREEN BOX V1."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -14,58 +14,167 @@
     <main class="app-shell">
       <header class="app-header">
         <div>
-          <p class="eyebrow">Automatizacion y monitoreo</p>
-          <h1>GREEN BOX</h1>
+          <p class="eyebrow">Sistema local de costos</p>
+          <h1>GREEN BOX V1</h1>
         </div>
-        <div class="storage-pill" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="storageStatusText">Guardado local</span>
+        <div class="header-actions">
+          <div class="storage-pill" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="storageStatusText">Guardado local</span>
+          </div>
         </div>
       </header>
 
-      <section class="summary-grid" aria-label="Resumen principal">
+      <section class="summary-grid" aria-label="Dashboard principal">
         <article class="summary-card">
-          <span>Costo unitario</span>
+          <span>Costo de fabricacion</span>
           <strong id="summaryUnitCost">$ 0,00</strong>
         </article>
         <article class="summary-card">
           <span>Precio de venta</span>
           <strong id="summarySalePrice">$ 0,00</strong>
         </article>
-        <article class="summary-card">
-          <span>Ganancia unitaria</span>
+        <article class="summary-card" id="summaryContributionCard">
+          <span id="summaryContributionLabel">Contribucion por unidad</span>
           <strong id="summaryProfit">$ 0,00</strong>
         </article>
-        <article class="summary-card accent">
+        <article class="summary-card">
           <span>Margen</span>
-          <strong id="summaryMargin">0%</strong>
+          <strong id="summaryMargin">No calculable</strong>
+        </article>
+        <article class="summary-card">
+          <span>Costos fijos mensuales</span>
+          <strong id="summaryFixedCosts">$ 0,00</strong>
+        </article>
+        <article class="summary-card accent">
+          <span>Punto de equilibrio</span>
+          <strong id="summaryBreakEven">No calculable</strong>
         </article>
       </section>
 
-      <div class="workspace-grid">
-        <section class="panel component-panel" aria-labelledby="componentsTitle">
-          <div class="panel-heading">
-            <div>
-              <p class="section-label">Materiales</p>
-              <h2 id="componentsTitle">Componentes</h2>
-            </div>
-            <button class="ghost-button" type="button" id="clearComponentsBtn">
-              Vaciar lista
-            </button>
-          </div>
+      <nav class="section-tabs" aria-label="Secciones de costos">
+        <button class="tab-button active" type="button" data-section-target="dashboardSection">
+          Dashboard
+        </button>
+        <button class="tab-button" type="button" data-section-target="hardwareSection">
+          Hardware
+        </button>
+        <button class="tab-button" type="button" data-section-target="printingSection">
+          Impresion 3D
+        </button>
+        <button class="tab-button" type="button" data-section-target="suppliesSection">
+          Insumos
+        </button>
+        <button class="tab-button" type="button" data-section-target="laborSection">
+          Mano de obra
+        </button>
+        <button class="tab-button" type="button" data-section-target="packagingSection">
+          Packaging
+        </button>
+        <button class="tab-button" type="button" data-section-target="wasteSection">
+          Merma y garantia
+        </button>
+        <button class="tab-button" type="button" data-section-target="monthlySection">
+          Costos mensuales
+        </button>
+        <button class="tab-button" type="button" data-section-target="pricingSection">
+          Precio
+        </button>
+        <button class="tab-button" type="button" data-section-target="simulatorSection">
+          Simulador
+        </button>
+        <button class="tab-button" type="button" data-section-target="breakEvenSection">
+          Equilibrio
+        </button>
+      </nav>
 
-          <form class="component-form" id="componentForm" autocomplete="off">
+      <section class="app-section active" id="dashboardSection" aria-labelledby="dashboardTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Resumen</p>
+            <h2 id="dashboardTitle">Dashboard</h2>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <article class="panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Detalle unitario</p>
+                <h3>Desglose del costo</h3>
+              </div>
+            </div>
+            <div class="breakdown-list" id="costBreakdownList"></div>
+            <div class="totals-list">
+              <div>
+                <span>Costo directo base</span>
+                <strong id="directBaseCost">$ 0,00</strong>
+              </div>
+              <div class="total-line">
+                <span>Costo variable unitario</span>
+                <strong id="variableUnitCost">$ 0,00</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Datos</p>
+                <h3>Respaldo</h3>
+              </div>
+            </div>
+            <div class="backup-actions">
+              <button class="primary-button" type="button" id="exportBackupBtn">
+                Exportar respaldo
+              </button>
+              <button class="secondary-button" type="button" id="exportPublicDataBtn">
+                Exportar para GitHub
+              </button>
+              <button class="secondary-button" type="button" id="importBackupBtn">
+                Importar respaldo
+              </button>
+              <input
+                class="hidden"
+                id="importBackupInput"
+                type="file"
+                accept="application/json,.json"
+              />
+              <button class="danger-button" type="button" id="resetAllDataBtn">
+                Borrar todos los datos
+              </button>
+            </div>
+            <p class="backup-status" id="backupStatus" aria-live="polite"></p>
+            <p class="migration-note hidden" id="migrationStatus" aria-live="polite"></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="hardwareSection" aria-labelledby="hardwareTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Componentes electronicos</p>
+            <h2 id="hardwareTitle">Hardware</h2>
+          </div>
+          <button class="ghost-button" type="button" id="clearComponentsBtn">
+            Vaciar hardware
+          </button>
+        </div>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="componentForm" autocomplete="off">
             <input type="hidden" id="componentId" />
+            <h3>Registro de hardware</h3>
 
             <label>
-              <span>Nombre del componente</span>
-              <input id="componentName" type="text" placeholder="Ej.: sensor, placa, cable" />
+              <span>Componente</span>
+              <input id="componentName" type="text" />
             </label>
 
             <div class="form-row">
               <label>
-                <span>Cantidad por Green Box</span>
-                <input id="componentQty" type="number" min="0" step="0.01" inputmode="decimal" />
+                <span>Cantidad</span>
+                <input id="componentQty" type="number" min="0.01" step="0.01" inputmode="decimal" />
               </label>
               <label>
                 <span>Precio unitario</span>
@@ -75,12 +184,14 @@
 
             <label>
               <span>Proveedor</span>
-              <input id="componentSupplier" type="text" placeholder="Proveedor" />
+              <input id="componentSupplier" type="text" />
             </label>
+
+            <p class="form-message" id="componentFormMessage" aria-live="polite"></p>
 
             <div class="form-actions">
               <button class="primary-button" type="submit" id="saveComponentBtn">
-                Agregar componente
+                Agregar hardware
               </button>
               <button class="secondary-button hidden" type="button" id="cancelEditBtn">
                 Cancelar edicion
@@ -88,160 +199,667 @@
             </div>
           </form>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Componente</th>
-                  <th>Cantidad</th>
-                  <th>Precio unitario</th>
-                  <th>Proveedor</th>
-                  <th>Costo</th>
-                  <th class="action-col">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="componentsTableBody">
-                <tr>
-                  <td colspan="6" class="empty-row">Sin componentes cargados.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Componente</th>
+                    <th>Cantidad</th>
+                    <th>Precio unitario</th>
+                    <th>Proveedor</th>
+                    <th>Costo</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="componentsTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-row">Sin componentes cargados.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total">
+              <span>Total hardware</span>
+              <strong id="componentsTotal">$ 0,00</strong>
+            </div>
+          </article>
+        </div>
+      </section>
 
-        <aside class="side-stack">
-          <section class="panel" aria-labelledby="costsTitle">
+      <section class="app-section" id="printingSection" aria-labelledby="printingTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Fabricacion fisica</p>
+            <h2 id="printingTitle">Impresion 3D</h2>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <article class="panel">
             <div class="panel-heading compact">
               <div>
-                <p class="section-label">Produccion</p>
-                <h2 id="costsTitle">Costos variables</h2>
+                <p class="section-label">Filamento</p>
+                <h3>Configuracion</h3>
               </div>
             </div>
-
-            <div class="cost-fields">
+            <div class="data-form">
               <label>
-                <span>Costo de impresion 3D</span>
-                <input id="caseCost" type="number" min="0" step="0.01" inputmode="decimal" />
+                <span>Tipo/nombre del filamento</span>
+                <input id="filamentName" type="text" />
               </label>
+              <div class="form-row">
+                <label>
+                  <span>Precio del rollo</span>
+                  <input id="filamentSpoolPrice" type="number" min="0" step="0.01" inputmode="decimal" />
+                </label>
+                <label>
+                  <span>Peso del rollo en gramos</span>
+                  <input id="filamentSpoolWeight" type="number" min="0" step="0.01" inputmode="decimal" />
+                </label>
+              </div>
               <label>
-                <span>Armado y mano de obra</span>
-                <input id="laborCost" type="number" min="0" step="0.01" inputmode="decimal" />
+                <span>% desperdicio / impresiones fallidas</span>
+                <input id="printingWastePercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
               </label>
-              <label>
-                <span>Otros costos variables</span>
-                <input id="otherCost" type="number" min="0" step="0.01" inputmode="decimal" />
-              </label>
+              <p class="form-message" id="printingConfigMessage" aria-live="polite"></p>
             </div>
-
             <div class="totals-list">
               <div>
-                <span>Costo total componentes</span>
-                <strong id="componentsTotal">$ 0,00</strong>
+                <span>Precio por gramo</span>
+                <strong id="filamentPricePerGram">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Gramos totales</span>
+                <strong id="printingTotalGrams">0 g</strong>
+              </div>
+              <div>
+                <span>Costo base</span>
+                <strong id="printingBaseCost">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Desperdicio</span>
+                <strong id="printingWasteCost">$ 0,00</strong>
               </div>
               <div class="total-line">
-                <span>Costo total fabricacion</span>
-                <strong id="manufacturingTotal">$ 0,00</strong>
+                <span>Total impresion 3D</span>
+                <strong id="printingTotal">$ 0,00</strong>
               </div>
             </div>
-          </section>
+          </article>
 
-          <section class="panel" aria-labelledby="saleTitle">
-            <div class="panel-heading compact">
-              <div>
-                <p class="section-label">Comercial</p>
-                <h2 id="saleTitle">Precio de venta</h2>
+          <div class="panel-stack">
+            <form class="panel data-form" id="printingPieceForm" autocomplete="off">
+              <input type="hidden" id="printingPieceId" />
+              <h3>Piezas impresas</h3>
+              <label>
+                <span>Nombre de la pieza</span>
+                <input id="printingPieceName" type="text" />
+              </label>
+              <div class="form-row">
+                <label>
+                  <span>Cantidad de piezas</span>
+                  <input id="printingPieceQty" type="number" min="0.01" step="0.01" inputmode="decimal" />
+                </label>
+                <label>
+                  <span>Peso unitario en gramos</span>
+                  <input id="printingPieceWeight" type="number" min="0.01" step="0.01" inputmode="decimal" />
+                </label>
               </div>
-            </div>
+              <p class="form-message" id="printingPieceFormMessage" aria-live="polite"></p>
+              <div class="form-actions">
+                <button class="primary-button" type="submit" id="savePrintingPieceBtn">
+                  Agregar pieza
+                </button>
+                <button class="secondary-button hidden" type="button" id="cancelPrintingPieceEditBtn">
+                  Cancelar edicion
+                </button>
+              </div>
+            </form>
 
-            <label class="margin-control">
-              <span>Margen deseado</span>
-              <div class="margin-inputs">
-                <input id="marginRange" type="range" min="0" max="95" step="1" value="0" />
-                <input id="marginInput" type="number" min="0" max="95" step="1" inputmode="numeric" />
-                <span>%</span>
+            <article class="panel table-panel">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Pieza</th>
+                      <th>Cantidad</th>
+                      <th>Peso unitario</th>
+                      <th>Gramos</th>
+                      <th>Costo</th>
+                      <th class="action-col">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="printingPiecesTableBody">
+                    <tr>
+                      <td colspan="6" class="empty-row">Sin piezas cargadas.</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="app-section" id="suppliesSection" aria-labelledby="suppliesTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Consumibles</p>
+            <h2 id="suppliesTitle">Insumos de montaje</h2>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="supplyForm" autocomplete="off">
+            <input type="hidden" id="supplyId" />
+            <h3>Registro de insumo</h3>
+            <label>
+              <span>Nombre</span>
+              <input id="supplyName" type="text" />
             </label>
+            <div class="form-row">
+              <label>
+                <span>Cantidad utilizada</span>
+                <input id="supplyQty" type="number" min="0.01" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Unidad de medida</span>
+                <select id="supplyUnit">
+                  <option value="unidad">unidad</option>
+                  <option value="metro">metro</option>
+                  <option value="centimetro">centimetro</option>
+                  <option value="gramo">gramo</option>
+                  <option value="kilogramo">kilogramo</option>
+                  <option value="paquete">paquete</option>
+                  <option value="rollo">rollo</option>
+                  <option value="otro">otro</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label>
+                <span>Precio unitario</span>
+                <input id="supplyPrice" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Proveedor</span>
+                <input id="supplySupplier" type="text" />
+              </label>
+            </div>
+            <p class="form-message" id="supplyFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="saveSupplyBtn">
+                Agregar insumo
+              </button>
+              <button class="secondary-button hidden" type="button" id="cancelSupplyEditBtn">
+                Cancelar edicion
+              </button>
+            </div>
+          </form>
 
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Insumo</th>
+                    <th>Cantidad</th>
+                    <th>Unidad</th>
+                    <th>Precio unitario</th>
+                    <th>Proveedor</th>
+                    <th>Costo</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="suppliesTableBody">
+                  <tr>
+                    <td colspan="7" class="empty-row">Sin insumos cargados.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total">
+              <span>Total insumos de montaje</span>
+              <strong id="suppliesTotal">$ 0,00</strong>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="laborSection" aria-labelledby="laborTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Produccion</p>
+            <h2 id="laborTitle">Mano de obra</h2>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="laborForm" autocomplete="off">
+            <input type="hidden" id="laborId" />
+            <h3>Registro de tarea</h3>
+            <label>
+              <span>Nombre de tarea</span>
+              <input id="laborName" type="text" />
+            </label>
+            <div class="form-row">
+              <label>
+                <span>Horas por Green Box</span>
+                <input id="laborHours" type="number" min="0.01" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Valor de la hora</span>
+                <input id="laborRate" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+            <label>
+              <span>Responsable</span>
+              <input id="laborResponsible" type="text" />
+            </label>
+            <p class="form-message" id="laborFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="saveLaborBtn">
+                Agregar tarea
+              </button>
+              <button class="secondary-button hidden" type="button" id="cancelLaborEditBtn">
+                Cancelar edicion
+              </button>
+            </div>
+          </form>
+
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tarea</th>
+                    <th>Horas</th>
+                    <th>Valor hora</th>
+                    <th>Responsable</th>
+                    <th>Costo</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="laborTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-row">Sin tareas cargadas.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total double">
+              <div>
+                <span>Horas totales</span>
+                <strong id="laborHoursTotal">0 h</strong>
+              </div>
+              <div>
+                <span>Total mano de obra</span>
+                <strong id="laborTotal">$ 0,00</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="packagingSection" aria-labelledby="packagingTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Presentacion</p>
+            <h2 id="packagingTitle">Packaging y presentacion</h2>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="packagingForm" autocomplete="off">
+            <input type="hidden" id="packagingId" />
+            <h3>Registro de packaging</h3>
+            <label>
+              <span>Elemento</span>
+              <input id="packagingName" type="text" />
+            </label>
+            <div class="form-row">
+              <label>
+                <span>Cantidad</span>
+                <input id="packagingQty" type="number" min="0.01" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Precio unitario</span>
+                <input id="packagingPrice" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+            <label>
+              <span>Proveedor</span>
+              <input id="packagingSupplier" type="text" />
+            </label>
+            <p class="form-message" id="packagingFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="savePackagingBtn">
+                Agregar elemento
+              </button>
+              <button class="secondary-button hidden" type="button" id="cancelPackagingEditBtn">
+                Cancelar edicion
+              </button>
+            </div>
+          </form>
+
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Elemento</th>
+                    <th>Cantidad</th>
+                    <th>Precio unitario</th>
+                    <th>Proveedor</th>
+                    <th>Costo</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="packagingTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-row">Sin packaging cargado.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total">
+              <span>Total packaging</span>
+              <strong id="packagingTotal">$ 0,00</strong>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="wasteSection" aria-labelledby="wasteTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Reservas</p>
+            <h2 id="wasteTitle">Merma y garantia</h2>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <article class="panel data-form">
+            <label>
+              <span>Porcentaje de merma</span>
+              <input id="generalWastePercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Reserva para garantia %</span>
+              <input id="warrantyPercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
+            </label>
+            <p class="form-message" id="adjustmentsMessage" aria-live="polite"></p>
+          </article>
+
+          <article class="panel">
+            <div class="totals-list">
+              <div>
+                <span>Base merma</span>
+                <strong id="wasteBase">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Costo merma</span>
+                <strong id="wasteCost">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Base garantia</span>
+                <strong id="warrantyBase">$ 0,00</strong>
+              </div>
+              <div class="total-line">
+                <span>Reserva garantia</span>
+                <strong id="warrantyReserve">$ 0,00</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="monthlySection" aria-labelledby="monthlyTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Negocio</p>
+            <h2 id="monthlyTitle">Costos mensuales</h2>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="monthlyCostForm" autocomplete="off">
+            <input type="hidden" id="monthlyCostId" />
+            <h3>Registro mensual</h3>
+            <label>
+              <span>Concepto</span>
+              <input id="monthlyConcept" type="text" />
+            </label>
+            <div class="form-row">
+              <label>
+                <span>Categoria</span>
+                <select id="monthlyCategory">
+                  <option value="Infraestructura">Infraestructura</option>
+                  <option value="Software">Software</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Administracion">Administracion</option>
+                  <option value="Servicios">Servicios</option>
+                  <option value="Otros">Otros</option>
+                </select>
+              </label>
+              <label>
+                <span>Periodicidad</span>
+                <select id="monthlyPeriodicity">
+                  <option value="monthly">mensual</option>
+                  <option value="annual">anual</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Monto</span>
+              <input id="monthlyAmount" type="number" min="0" step="0.01" inputmode="decimal" />
+            </label>
+            <p class="form-message" id="monthlyCostFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="saveMonthlyCostBtn">
+                Agregar costo
+              </button>
+              <button class="secondary-button hidden" type="button" id="cancelMonthlyCostEditBtn">
+                Cancelar edicion
+              </button>
+            </div>
+          </form>
+
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Concepto</th>
+                    <th>Categoria</th>
+                    <th>Periodicidad</th>
+                    <th>Monto</th>
+                    <th>Equivalente mensual</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyCostsTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-row">Sin costos mensuales cargados.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total">
+              <span>Costos fijos mensuales</span>
+              <strong id="monthlyFixedCosts">$ 0,00</strong>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="pricingSection" aria-labelledby="pricingTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Rentabilidad</p>
+            <h2 id="pricingTitle">Precio de venta y rentabilidad</h2>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <article class="panel data-form">
+            <fieldset class="radio-group">
+              <legend>Modo de calculo</legend>
+              <label>
+                <input type="radio" name="pricingMode" value="manual" />
+                <span>Precio manual</span>
+              </label>
+              <label>
+                <input type="radio" name="pricingMode" value="markup" />
+                <span>Recargo sobre costo</span>
+              </label>
+              <label>
+                <input type="radio" name="pricingMode" value="margin" />
+                <span>Margen sobre precio de venta</span>
+              </label>
+            </fieldset>
+
+            <div class="pricing-input" id="manualPriceGroup">
+              <label>
+                <span>Precio de venta</span>
+                <input id="manualSalePrice" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+
+            <div class="pricing-input hidden" id="markupGroup">
+              <label>
+                <span>Recargo sobre costo %</span>
+                <input id="targetMarkupPercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+
+            <div class="pricing-input hidden" id="targetMarginGroup">
+              <label>
+                <span>Margen deseado %</span>
+                <input id="targetMarginPercent" type="number" min="0" max="99.99" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
+
+            <div class="explain-lines">
+              <p>Recargo: porcentaje agregado sobre el costo.</p>
+              <p>Margen: porcentaje del precio de venta que queda despues del costo variable.</p>
+            </div>
+            <p class="form-message" id="pricingMessage" aria-live="polite"></p>
+          </article>
+
+          <article class="panel">
             <div class="result-grid">
+              <div>
+                <span>Costo variable unitario</span>
+                <strong id="pricingVariableCost">$ 0,00</strong>
+              </div>
               <div>
                 <span>Precio de venta</span>
                 <strong id="salePrice">$ 0,00</strong>
               </div>
               <div>
-                <span>Ganancia por unidad</span>
+                <span id="unitProfitLabel">Contribucion por unidad</span>
                 <strong id="unitProfit">$ 0,00</strong>
               </div>
               <div>
-                <span>Margen porcentual</span>
-                <strong id="actualMargin">0%</strong>
+                <span>Margen</span>
+                <strong id="actualMargin">No calculable</strong>
               </div>
-            </div>
-          </section>
-
-          <section class="panel" aria-labelledby="simulatorTitle">
-            <div class="panel-heading compact">
               <div>
-                <p class="section-label">Escenarios</p>
-                <h2 id="simulatorTitle">Simulador de produccion</h2>
+                <span>Recargo sobre costo</span>
+                <strong id="actualMarkup">No calculable</strong>
               </div>
             </div>
+          </article>
+        </div>
+      </section>
 
+      <section class="app-section" id="simulatorSection" aria-labelledby="simulatorTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Escenarios</p>
+            <h2 id="simulatorTitle">Simulador</h2>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <article class="panel data-form">
+            <div class="quick-options" aria-label="Cantidades rapidas">
+              <button type="button" data-simulator-qty="1">1</button>
+              <button type="button" data-simulator-qty="5">5</button>
+              <button type="button" data-simulator-qty="10">10</button>
+              <button type="button" data-simulator-qty="25">25</button>
+              <button type="button" data-simulator-qty="50">50</button>
+              <button type="button" data-simulator-qty="100">100</button>
+            </div>
             <label>
-              <span>Cantidad a fabricar</span>
-              <select id="productionQty">
-                <option value="1">1 Green Box</option>
-                <option value="10">10 Green Box</option>
-                <option value="25">25 Green Box</option>
-                <option value="50">50 Green Box</option>
-                <option value="100">100 Green Box</option>
-              </select>
+              <span>Cantidad personalizada</span>
+              <input id="productionQty" type="number" min="1" step="1" inputmode="numeric" />
             </label>
+            <p class="form-message" id="simulatorMessage" aria-live="polite"></p>
+          </article>
 
-            <div class="result-grid production-results">
+          <article class="panel">
+            <div class="result-grid">
               <div>
-                <span>Inversion necesaria</span>
+                <span>Unidades</span>
+                <strong id="simulatorUnits">1</strong>
+              </div>
+              <div>
+                <span>Inversion productiva</span>
                 <strong id="requiredInvestment">$ 0,00</strong>
               </div>
               <div>
-                <span>Facturacion estimada</span>
+                <span>Costo variable total</span>
+                <strong id="simulatorVariableTotal">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Facturacion</span>
                 <strong id="estimatedRevenue">$ 0,00</strong>
               </div>
               <div>
-                <span>Ganancia total estimada</span>
+                <span>Contribucion total</span>
+                <strong id="estimatedContribution">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Costos fijos</span>
+                <strong id="simulatorFixedCosts">$ 0,00</strong>
+              </div>
+              <div class="wide-result">
+                <span>Resultado estimado antes de impuestos</span>
                 <strong id="estimatedProfit">$ 0,00</strong>
               </div>
             </div>
-          </section>
+          </article>
+        </div>
+      </section>
 
-          <section class="panel" aria-labelledby="backupTitle">
-            <div class="panel-heading compact">
-              <div>
-                <p class="section-label">Datos</p>
-                <h2 id="backupTitle">Backup</h2>
-              </div>
-            </div>
+      <section class="app-section" id="breakEvenSection" aria-labelledby="breakEvenTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Ventas mensuales</p>
+            <h2 id="breakEvenTitle">Punto de equilibrio</h2>
+          </div>
+        </div>
 
-            <div class="backup-actions">
-              <button class="primary-button" type="button" id="exportBackupBtn">
-                Exportar backup
-              </button>
-              <button class="secondary-button" type="button" id="exportPublicDataBtn">
-                Exportar para GitHub
-              </button>
-              <button class="secondary-button" type="button" id="importBackupBtn">
-                Importar backup
-              </button>
-              <input
-                class="hidden"
-                id="importBackupInput"
-                type="file"
-                accept="application/json,.json"
-              />
+        <article class="panel break-even-card">
+          <strong id="breakEvenUnits">No calculable</strong>
+          <p id="breakEvenMessage">
+            No se puede calcular el punto de equilibrio sin precio, contribucion positiva y costos fijos.
+          </p>
+          <div class="result-grid">
+            <div>
+              <span>Costos fijos mensuales</span>
+              <strong id="breakEvenFixedCosts">$ 0,00</strong>
             </div>
-            <p class="backup-status" id="backupStatus" aria-live="polite"></p>
-          </section>
-        </aside>
-      </div>
+            <div>
+              <span>Contribucion por unidad</span>
+              <strong id="breakEvenContribution">$ 0,00</strong>
+            </div>
+          </div>
+        </article>
+      </section>
     </main>
 
     <script src="script.js"></script>
