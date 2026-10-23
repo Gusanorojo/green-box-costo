@@ -10,7 +10,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL;
 const WRITE_KEY = process.env.GREEN_BOX_WRITE_KEY || "";
 const STATE_ID = "main";
-const CURRENT_VERSION = 7;
+const CURRENT_VERSION = 9;
 const SUPPLY_UNITS = [
   "unidad",
   "metro",
@@ -254,6 +254,7 @@ function normalizeVersionTwoState(data) {
             quantity: cleanString(piece.quantity),
             weightGrams: cleanString(piece.weightGrams),
             printHours: cleanString(piece.printHours ?? piece.print_hours ?? piece.hours),
+            printHoursBasis: piece.printHoursBasis === "per-piece" ? "per-piece" : "batch",
           }))
         : [],
       wastePercent: cleanString(data.printing?.wastePercent),
@@ -418,8 +419,31 @@ function normalizeComponents(components) {
         quantity: cleanString(component.quantity),
         unitPrice: cleanString(component.unitPrice),
         supplier: cleanString(component.supplier),
+        hardwareNode: normalizeHardwareNode(component.hardwareNode ?? component.node, component),
       }))
     : [];
+}
+
+function normalizeHardwareNode(value, component = null) {
+  const savedNode = cleanString(value);
+  const allowedNodes = ["relay", "environment", "soil", "irrigation", "shared", "unassigned"];
+  if (allowedNodes.includes(savedNode)) {
+    return savedNode;
+  }
+  if (savedNode) {
+    return "unassigned";
+  }
+
+  const name = cleanString(component?.name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (/mq\s*-?\s*135/.test(name) || /dht\s*-?\s*22|dth\s*-?\s*22/.test(name)) return "environment";
+  if (/humedad.*suelo|suelo.*humedad|soil.*moisture/.test(name)) return "soil";
+  if (/rele|relay/.test(name)) return "relay";
+  if (/bomba|riego|irrigacion/.test(name)) return "irrigation";
+  if (/raspberry|raspberry pi/.test(name)) return "shared";
+  return "unassigned";
 }
 
 function cleanString(value) {

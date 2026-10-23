@@ -13,9 +13,13 @@
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <div>
-          <p class="eyebrow">Sistema de costos</p>
-          <h1>GREEN BOX V1</h1>
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">GB</span>
+          <div>
+            <p class="eyebrow">Sistema de costos</p>
+            <h1>GREEN BOX <span class="title-version">V1</span></h1>
+            <p class="header-caption">Costos y rentabilidad</p>
+          </div>
         </div>
         <div class="header-actions">
           <div class="storage-pill" aria-live="polite">
@@ -26,11 +30,11 @@
       </header>
 
       <section class="summary-grid" aria-label="Dashboard principal">
-        <article class="summary-card">
+        <article class="summary-card primary">
           <span>Costo de fabricacion</span>
           <strong id="summaryUnitCost">$ 0,00</strong>
         </article>
-        <article class="summary-card">
+        <article class="summary-card price-card">
           <span>Precio de venta</span>
           <strong id="summarySalePrice">$ 0,00</strong>
         </article>
@@ -46,52 +50,26 @@
           <span>Costos fijos mensuales</span>
           <strong id="summaryFixedCosts">$ 0,00</strong>
         </article>
-        <article class="summary-card accent">
+        <article class="summary-card">
           <span>Punto de equilibrio</span>
           <strong id="summaryBreakEven">No calculable</strong>
         </article>
       </section>
 
       <nav class="section-tabs" aria-label="Secciones de costos">
-        <button class="tab-button active" type="button" data-section-target="dashboardSection">
-          Dashboard
-        </button>
-        <button class="tab-button" type="button" data-section-target="hardwareSection">
-          Hardware
-        </button>
-        <button class="tab-button" type="button" data-section-target="printingSection">
-          Impresion 3D
-        </button>
-        <button class="tab-button" type="button" data-section-target="suppliesSection">
-          Insumos
-        </button>
-        <button class="tab-button" type="button" data-section-target="laborSection">
-          Mano de obra
-        </button>
-        <button class="tab-button" type="button" data-section-target="packagingSection">
-          Packaging
-        </button>
-        <button class="tab-button" type="button" data-section-target="wasteSection">
-          Merma y garantia
-        </button>
-        <button class="tab-button" type="button" data-section-target="monthlySection">
-          Costos mensuales
-        </button>
-        <button class="tab-button" type="button" data-section-target="purchasesSection">
-          Lista de compras
-        </button>
-        <button class="tab-button" type="button" data-section-target="stockSection">
-          Stock
-        </button>
-        <button class="tab-button" type="button" data-section-target="pricingSection">
-          Precio
-        </button>
-        <button class="tab-button" type="button" data-section-target="simulatorSection">
-          Simulador
-        </button>
-        <button class="tab-button" type="button" data-section-target="breakEvenSection">
-          Equilibrio
-        </button>
+        <button class="tab-button active" type="button" data-section-target="dashboardSection">Dashboard</button>
+        <button class="tab-button" type="button" data-section-target="hardwareSection">Hardware</button>
+        <button class="tab-button" type="button" data-section-target="printingSection">Impresion 3D</button>
+        <button class="tab-button" type="button" data-section-target="suppliesSection">Insumos</button>
+        <button class="tab-button" type="button" data-section-target="laborSection">Mano de obra</button>
+        <button class="tab-button" type="button" data-section-target="packagingSection">Packaging</button>
+        <button class="tab-button" type="button" data-section-target="wasteSection">Merma y garantia</button>
+        <button class="tab-button" type="button" data-section-target="monthlySection">Costos mensuales</button>
+        <button class="tab-button" type="button" data-section-target="purchasesSection">Lista de compras</button>
+        <button class="tab-button" type="button" data-section-target="stockSection">Stock</button>
+        <button class="tab-button" type="button" data-section-target="pricingSection">Precio</button>
+        <button class="tab-button" type="button" data-section-target="simulatorSection">Simulador</button>
+        <button class="tab-button" type="button" data-section-target="breakEvenSection">Equilibrio</button>
       </nav>
 
       <section class="app-section active" id="dashboardSection" aria-labelledby="dashboardTitle">
@@ -99,8 +77,11 @@
           <div>
             <p class="section-label">Resumen</p>
             <h2 id="dashboardTitle">Dashboard</h2>
+            <p class="section-description">Costo estimado por unidad y rentabilidad del producto.</p>
           </div>
         </div>
+
+        <aside class="data-warning hidden" id="dataWarnings" aria-live="polite"></aside>
 
         <div class="dashboard-layout">
           <article class="panel">
@@ -193,6 +174,19 @@
               <input id="componentSupplier" type="text" />
             </label>
 
+            <label>
+              <span>Nodo o grupo</span>
+              <select id="componentNode">
+                <option value="unassigned">Pendiente de asignación</option>
+                <option value="relay">Nodo de relés</option>
+                <option value="environment">Nodo ambiental</option>
+                <option value="soil">Nodo de humedad de suelo</option>
+                <option value="irrigation">Nodo de bomba / riego</option>
+                <option value="shared">Control central y hardware compartido</option>
+              </select>
+              <small class="muted-text">Si no está claro dónde se instala, dejalo pendiente.</small>
+            </label>
+
             <p class="form-message" id="componentFormMessage" aria-live="polite"></p>
 
             <div class="form-actions">
@@ -205,28 +199,26 @@
             </div>
           </form>
 
-          <article class="panel table-panel">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Componente</th>
-                    <th>Cantidad</th>
-                    <th>Precio unitario</th>
-                    <th>Proveedor</th>
-                    <th>Costo</th>
-                    <th class="action-col">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="componentsTableBody">
-                  <tr>
-                    <td colspan="6" class="empty-row">Sin componentes cargados.</td>
-                  </tr>
-                </tbody>
-              </table>
+          <article class="panel hardware-cost-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-label">Costo por dispositivo</p>
+                <h3>Componentes agrupados por nodo</h3>
+              </div>
+            </div>
+            <p class="muted-text hardware-note">Cada componente se cuenta una sola vez. Las carcasas siguen en Impresión 3D.</p>
+            <div class="hardware-node-groups" id="hardwareNodeGroups"></div>
+            <div class="hardware-summary">
+              <h3>Resumen de hardware</h3>
+              <div class="table-wrap">
+                <table class="hardware-summary-table">
+                  <thead><tr><th>Grupo</th><th>Componentes</th><th>Costo</th></tr></thead>
+                  <tbody id="hardwareSummaryBody"></tbody>
+                </table>
+              </div>
             </div>
             <div class="table-total">
-              <span>Total hardware</span>
+              <span>Total hardware · coincide con el costo global</span>
               <strong id="componentsTotal">$ 0,00</strong>
             </div>
           </article>
@@ -326,8 +318,16 @@
                 </label>
               </div>
               <label>
-                <span>Horas de impresion</span>
+                <span>Horas de impresión</span>
                 <input id="printingPieceHours" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Las horas corresponden a</span>
+                <select id="printingPieceHoursBasis">
+                  <option value="batch">El lote completo</option>
+                  <option value="per-piece">Cada pieza</option>
+                </select>
+                <small class="muted-text">Si elegís cada pieza, las horas se multiplican por la cantidad.</small>
               </label>
               <p class="form-message" id="printingPieceFormMessage" aria-live="polite"></p>
               <div class="form-actions">

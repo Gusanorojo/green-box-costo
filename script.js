@@ -5,8 +5,17 @@ const CLOUD_MERGE_BACKUP_KEY = `${STORAGE_KEY}.cloudMergeBackup`;
 const STORAGE_LOG_PREFIX = "[Green Box persistencia]";
 const PUBLIC_DATA_FILE = "green-box-data.json";
 const API_BASE_URL = (globalThis.GREEN_BOX_API_URL || "").replace(/\/$/, "");
-const CURRENT_VERSION = 7;
+const CURRENT_VERSION = 9;
 const CURRENCY = globalThis.GreenBoxCurrency;
+
+const HARDWARE_NODES = [
+  { id: "relay", label: "Nodo de relés" },
+  { id: "environment", label: "Nodo ambiental" },
+  { id: "soil", label: "Nodo de humedad de suelo" },
+  { id: "irrigation", label: "Nodo de bomba / riego" },
+  { id: "shared", label: "Control central y hardware compartido" },
+  { id: "unassigned", label: "Pendiente de asignación" },
+];
 
 const SUPPLY_UNITS = [
   "unidad",
@@ -56,6 +65,7 @@ const elements = {
   summaryContributionLabel: document.querySelector("#summaryContributionLabel"),
 
   costBreakdownList: document.querySelector("#costBreakdownList"),
+  dataWarnings: document.querySelector("#dataWarnings"),
   directBaseCost: document.querySelector("#directBaseCost"),
   variableUnitCost: document.querySelector("#variableUnitCost"),
 
@@ -65,11 +75,13 @@ const elements = {
   componentQty: document.querySelector("#componentQty"),
   componentPrice: document.querySelector("#componentPrice"),
   componentSupplier: document.querySelector("#componentSupplier"),
+  componentNode: document.querySelector("#componentNode"),
   componentFormMessage: document.querySelector("#componentFormMessage"),
   saveComponentBtn: document.querySelector("#saveComponentBtn"),
   cancelEditBtn: document.querySelector("#cancelEditBtn"),
   clearComponentsBtn: document.querySelector("#clearComponentsBtn"),
-  componentsTableBody: document.querySelector("#componentsTableBody"),
+  hardwareNodeGroups: document.querySelector("#hardwareNodeGroups"),
+  hardwareSummaryBody: document.querySelector("#hardwareSummaryBody"),
   componentsTotal: document.querySelector("#componentsTotal"),
 
   filamentName: document.querySelector("#filamentName"),
@@ -91,6 +103,7 @@ const elements = {
   printingPieceQty: document.querySelector("#printingPieceQty"),
   printingPieceWeight: document.querySelector("#printingPieceWeight"),
   printingPieceHours: document.querySelector("#printingPieceHours"),
+  printingPieceHoursBasis: document.querySelector("#printingPieceHoursBasis"),
   printingPieceFormMessage: document.querySelector("#printingPieceFormMessage"),
   savePrintingPieceBtn: document.querySelector("#savePrintingPieceBtn"),
   cancelPrintingPieceEditBtn: document.querySelector("#cancelPrintingPieceEditBtn"),
@@ -480,11 +493,30 @@ function calculateRecordCost(record, quantityKey = "quantity", priceKey = "unitP
   return positiveQuantity(record?.[quantityKey]) * nonNegativeNumber(record?.[priceKey]);
 }
 
+function calculateHardwareGroups(components = state.components) {
+  const groups = new Map(
+    HARDWARE_NODES.map((node) => [node.id, { ...node, total: 0, componentCount: 0 }]),
+  );
+
+  for (const component of Array.isArray(components) ? components : []) {
+    const nodeId = normalizeHardwareNode(component.hardwareNode, component);
+    const group = groups.get(nodeId);
+    group.total += calculateRecordCost(component);
+    group.componentCount += 1;
+  }
+
+  return [...groups.values()];
+}
+
 function calculatePrintingPiece(piece, pricePerGram) {
   const quantity = positiveQuantity(piece?.quantity);
   const unitWeightGrams = positiveQuantity(piece?.weightGrams);
   const totalGrams = quantity * unitWeightGrams;
-  const printHours = nonNegativeNumber(piece?.printHours);
+  const enteredHours = nonNegativeNumber(piece?.printHours);
+  // Missing basis keeps legacy rows' existing behavior: hours are for the full batch.
+  const printHours = piece?.printHoursBasis === "per-piece"
+    ? enteredHours * quantity
+    : enteredHours;
 
   return {
     totalGrams,
@@ -504,10 +536,8 @@ function calculateMonthlyEquivalent(cost, targetCurrency = state.currencySetting
 
 function calculateFinancialSummary(inputState = state) {
   const current = normalizeStateShape(inputState);
-  const hardwareTotal = current.components.reduce(
-    (total, component) => total + calculateRecordCost(component),
-    0,
-  );
+  const hardwareGroups = calculateHardwareGroups(current.components);
+  const hardwareTotal = hardwareGroups.reduce((total, group) => total + group.total, 0);
 
   const spoolPrice = nonNegativeNumber(current.printing.filament.spoolPrice);
   const spoolWeight = positiveQuantity(current.printing.filament.spoolWeightGrams);
@@ -607,6 +637,7 @@ function calculateFinancialSummary(inputState = state) {
 
   return {
     hardwareTotal,
+    hardwareGroups,
     filamentPricePerGram,
     printingPieces,
     printingPiecesBaseCost,
@@ -791,6 +822,7 @@ function normalizeVersionTwoState(data) {
             quantity: stringValue(piece.quantity),
             weightGrams: stringValue(piece.weightGrams),
             printHours: stringValue(piece.printHours ?? piece.print_hours ?? piece.hours),
+            printHoursBasis: piece.printHoursBasis === "per-piece" ? "per-piece" : "batch",
           }))
         : [],
       wastePercent: stringValue(data.printing?.wastePercent),
@@ -901,8 +933,44 @@ function normalizeComponents(components) {
         quantity: stringValue(component.quantity),
         unitPrice: stringValue(component.unitPrice),
         supplier: stringValue(component.supplier),
+        hardwareNode: normalizeHardwareNode(
+          component.hardwareNode ?? component.node,
+          component,
+        ),
       }))
     : [];
+}
+
+function normalizeHardwareNode(value, component = null) {
+  const savedNode = stringValue(value);
+  if (HARDWARE_NODES.some((node) => node.id === savedNode)) {
+    return savedNode;
+  }
+  if (savedNode) {
+    return "unassigned";
+  }
+
+  const name = stringValue(component?.name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (/mq\s*-?\s*135/.test(name) || /dht\s*-?\s*22|dth\s*-?\s*22/.test(name)) {
+    return "environment";
+  }
+  if (/humedad.*suelo|suelo.*humedad|soil.*moisture/.test(name)) {
+    return "soil";
+  }
+  if (/rele|relay/.test(name)) {
+    return "relay";
+  }
+  if (/bomba|riego|irrigacion/.test(name)) {
+    return "irrigation";
+  }
+  if (/raspberry|raspberry pi/.test(name)) {
+    return "shared";
+  }
+  return "unassigned";
 }
 
 function normalizeRecoveredComponent(component) {
@@ -1126,15 +1194,29 @@ function mergeStatesWithoutDataLoss(primaryState, secondaryState) {
 
   const components = mergeRecordList(merged.components, secondary.components, {
     identityFields: ["name", "quantity", "unitPrice", "supplier"],
-    mergeFields: ["id", "name", "quantity", "unitPrice", "supplier"],
+    mergeFields: ["id", "name", "quantity", "unitPrice", "supplier", "hardwareNode"],
   });
   merged.components = components.list;
+  const rawPrimaryComponents = Array.isArray(rawPrimary?.components) ? rawPrimary.components : [];
+  const rawSecondaryComponents = Array.isArray(rawSecondary?.components) ? rawSecondary.components : [];
+  let componentNodeAssignmentsMerged = false;
+  merged.components.forEach((component) => {
+    const matches = (item) => item?.id && item.id === component.id;
+    const originalPrimary = rawPrimaryComponents.find(matches);
+    const originalSecondary = rawSecondaryComponents.find(matches);
+    const primaryHasNode = stringValue(originalPrimary?.hardwareNode ?? originalPrimary?.node);
+    const secondaryNode = originalSecondary?.hardwareNode ?? originalSecondary?.node;
+    if (!primaryHasNode && HARDWARE_NODES.some((node) => node.id === secondaryNode)) {
+      component.hardwareNode = secondaryNode;
+      componentNodeAssignmentsMerged = true;
+    }
+  });
   report.components = components.report;
-  changed = changed || components.changed;
+  changed = changed || components.changed || componentNodeAssignmentsMerged;
 
   const printingPieces = mergeRecordList(merged.printing.pieces, secondary.printing.pieces, {
     identityFields: ["name", "quantity", "weightGrams"],
-    mergeFields: ["id", "name", "quantity", "weightGrams", "printHours"],
+    mergeFields: ["id", "name", "quantity", "weightGrams", "printHours", "printHoursBasis"],
   });
   merged.printing.pieces = printingPieces.list;
   report.printingPieces = printingPieces.report;
@@ -1954,6 +2036,7 @@ function upsertComponent(event) {
     quantity: stringValue(elements.componentQty.value),
     unitPrice: stringValue(elements.componentPrice.value),
     supplier: stringValue(elements.componentSupplier.value),
+    hardwareNode: normalizeHardwareNode(elements.componentNode.value),
   });
 
   resetComponentForm();
@@ -1972,6 +2055,7 @@ function editComponent(id) {
   elements.componentQty.value = component.quantity;
   elements.componentPrice.value = component.unitPrice;
   elements.componentSupplier.value = component.supplier;
+  elements.componentNode.value = normalizeHardwareNode(component.hardwareNode, component);
   elements.saveComponentBtn.textContent = "Guardar cambios";
   elements.cancelEditBtn.classList.remove("hidden");
   setFormMessage(elements.componentFormMessage, "", false);
@@ -2050,6 +2134,7 @@ function resetComponentForm() {
   elements.componentQty.value = "";
   elements.componentPrice.value = "";
   elements.componentSupplier.value = "";
+  elements.componentNode.value = "unassigned";
   elements.saveComponentBtn.textContent = "Agregar hardware";
   elements.cancelEditBtn.classList.add("hidden");
   setFormMessage(elements.componentFormMessage, "", false);
@@ -2089,6 +2174,7 @@ function upsertPrintingPiece(event) {
     quantity: stringValue(elements.printingPieceQty.value),
     weightGrams: stringValue(elements.printingPieceWeight.value),
     printHours: stringValue(elements.printingPieceHours.value),
+    printHoursBasis: elements.printingPieceHoursBasis.value === "per-piece" ? "per-piece" : "batch",
   });
 
   resetPrintingPieceForm();
@@ -2107,6 +2193,7 @@ function editPrintingPiece(id) {
   elements.printingPieceQty.value = piece.quantity;
   elements.printingPieceWeight.value = piece.weightGrams;
   elements.printingPieceHours.value = piece.printHours;
+  elements.printingPieceHoursBasis.value = piece.printHoursBasis === "per-piece" ? "per-piece" : "batch";
   elements.savePrintingPieceBtn.textContent = "Guardar cambios";
   elements.cancelPrintingPieceEditBtn.classList.remove("hidden");
   setFormMessage(elements.printingPieceFormMessage, "", false);
@@ -2713,6 +2800,7 @@ function render() {
   renderSimulator(summary);
   renderBreakEven(summary);
   renderCurrencyStatus();
+  renderDataWarnings();
   renderMigrationStatus();
 }
 
@@ -2742,7 +2830,7 @@ function syncInputs() {
 }
 
 function renderTables(summary) {
-  renderComponents();
+  renderComponents(summary);
   renderPrintingPieces(summary);
   renderSupplies();
   renderLabor();
@@ -2752,32 +2840,60 @@ function renderTables(summary) {
   renderInventoryItems();
 }
 
-function renderComponents() {
-  if (state.components.length === 0) {
-    elements.componentsTableBody.innerHTML =
-      '<tr><td colspan="6" class="empty-row">Sin componentes cargados.</td></tr>';
-    return;
-  }
+function renderComponents(summary) {
+  const previousDetails = Array.from(elements.hardwareNodeGroups.querySelectorAll("details[data-node-id]"));
+  const expandedNodes = new Set(previousDetails.filter((details) => details.open).map((details) => details.dataset.nodeId));
+  const groups = summary.hardwareGroups;
+  const isFirstRender = previousDetails.length === 0;
 
-  elements.componentsTableBody.innerHTML = state.components
-    .map(
-      (component) => `
-        <tr>
-          <td><div class="record-name">${escapeHtml(component.name)}</div></td>
-          <td>${formatQuantity(positiveQuantity(component.quantity))}</td>
-          <td>${formatMoney(nonNegativeNumber(component.unitPrice))}</td>
-          <td class="muted-text">${escapeHtml(component.supplier || "-")}</td>
-          <td><strong>${formatMoney(calculateRecordCost(component))}</strong></td>
-          <td>
-            <div class="row-actions">
-              <button class="icon-button" type="button" data-action="edit-component" data-id="${escapeAttribute(component.id)}">Editar</button>
-              <button class="icon-button danger" type="button" data-action="delete-component" data-id="${escapeAttribute(component.id)}">Borrar</button>
-            </div>
-          </td>
-        </tr>
-      `,
-    )
-    .join("");
+  elements.hardwareNodeGroups.innerHTML = groups.map((group) => {
+    const components = state.components.filter(
+      (component) => normalizeHardwareNode(component.hardwareNode, component) === group.id,
+    );
+    const shouldOpen = isFirstRender ? group.componentCount > 0 : expandedNodes.has(group.id);
+    const rows = components.length
+      ? components.map((component) => `
+          <tr>
+            <td><div class="record-name">${escapeHtml(component.name)}</div></td>
+            <td>${formatQuantity(positiveQuantity(component.quantity))}</td>
+            <td>${formatMoney(nonNegativeNumber(component.unitPrice))}</td>
+            <td class="muted-text">${escapeHtml(component.supplier || "-")}</td>
+            <td><strong>${formatMoney(calculateRecordCost(component))}</strong></td>
+            <td>
+              <div class="row-actions">
+                <button class="icon-button" type="button" data-action="edit-component" data-id="${escapeAttribute(component.id)}">Editar</button>
+                <button class="icon-button danger" type="button" data-action="delete-component" data-id="${escapeAttribute(component.id)}">Borrar</button>
+              </div>
+            </td>
+          </tr>
+        `).join("")
+      : '<tr><td colspan="6" class="empty-row">Todavía no hay componentes en este grupo.</td></tr>';
+
+    return `
+      <details class="hardware-node-group" data-node-id="${group.id}" ${shouldOpen ? "open" : ""}>
+        <summary>
+          <span class="hardware-node-name">${escapeHtml(group.label)}</span>
+          <span class="hardware-node-count">${formatQuantity(group.componentCount, group.componentCount === 1 ? "componente" : "componentes")}</span>
+          <strong class="hardware-node-total">${formatMoney(group.total)}</strong>
+        </summary>
+        <div class="table-wrap hardware-node-table">
+          <table>
+            <thead><tr><th>Componente</th><th>Cantidad</th><th>Precio unitario</th><th>Proveedor</th><th>Subtotal</th><th class="action-col">Acciones</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </details>
+    `;
+  }).join("");
+
+  elements.hardwareSummaryBody.innerHTML = groups.map((group) => `
+    <tr>
+      <td>${escapeHtml(group.label)}</td>
+      <td>${formatQuantity(group.componentCount)}</td>
+      <td><strong>${formatMoney(group.total)}</strong></td>
+    </tr>
+  `).join("");
+  elements.componentsTotal.textContent = formatMoney(summary.hardwareTotal);
 }
 
 function renderPrintingPieces(summary) {
@@ -3444,9 +3560,8 @@ function renderCostBreakdown(summary) {
   const categories = [
     ["Hardware", summary.hardwareTotal],
     ["Impresion 3D", summary.printingTotal],
-    ["Insumos", summary.suppliesTotal],
     ["Mano de obra", summary.laborTotal],
-    ["Packaging", summary.packagingTotal],
+    ["Otros costos", summary.suppliesTotal + summary.packagingTotal],
     ["Merma", summary.wasteCost],
     ["Garantia", summary.warrantyReserve],
   ];
@@ -3475,6 +3590,47 @@ function renderCostBreakdown(summary) {
       `;
     })
     .join("");
+}
+
+function renderDataWarnings() {
+  const warnings = [];
+  const checkRows = (rows, label) => {
+    for (const row of rows) {
+      if (!stringValue(row.name)) continue;
+      const name = stringValue(row.name);
+      const quantity = positiveQuantity(row.quantity);
+      const price = nonNegativeNumber(row.unitPrice);
+      if (!quantity) warnings.push(`${label} «${name}»: falta una cantidad válida.`);
+      if (!price) warnings.push(`${label} «${name}»: falta un precio válido.`);
+      else if (price < 1) warnings.push(`${label} «${name}»: el precio unitario es menor a ARS 1; revisalo por si quedó incompleto.`);
+    }
+  };
+
+  checkRows(state.components, "Hardware");
+  checkRows(state.supplies, "Insumo");
+  checkRows(state.packaging, "Packaging");
+  for (const task of state.labor) {
+    if (!stringValue(task.name)) continue;
+    if (!positiveQuantity(task.hours)) warnings.push(`Mano de obra «${task.name}»: faltan horas.`);
+    if (!nonNegativeNumber(task.hourlyRate)) warnings.push(`Mano de obra «${task.name}»: falta una tarifa válida.`);
+  }
+  for (const piece of state.printing.pieces) {
+    if (!stringValue(piece.name)) continue;
+    if (!positiveQuantity(piece.quantity)) warnings.push(`Impresión «${piece.name}»: falta una cantidad válida.`);
+    if (!positiveQuantity(piece.weightGrams)) warnings.push(`Impresión «${piece.name}»: falta el peso por pieza.`);
+    if (!nonNegativeNumber(piece.printHours)) warnings.push(`Impresión «${piece.name}»: no se cargaron horas de impresión.`);
+  }
+  if (state.printing.pieces.length && (!positiveQuantity(state.printing.filament.spoolWeightGrams) || !nonNegativeNumber(state.printing.filament.spoolPrice))) {
+    warnings.push("Impresión 3D: completá el precio y el peso del rollo para calcular el filamento.");
+  }
+  for (const cost of state.monthlyCosts) {
+    if (stringValue(cost.concept) && !nonNegativeNumber(cost.amount)) warnings.push(`Costo mensual «${cost.concept}»: falta un importe válido.`);
+  }
+
+  elements.dataWarnings.innerHTML = warnings.length
+    ? `<strong>Revisá estos datos</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+    : "";
+  elements.dataWarnings.classList.toggle("hidden", warnings.length === 0);
 }
 
 function renderPrintingSummary(summary) {
@@ -3640,7 +3796,7 @@ function bindEvents() {
   elements.componentForm.addEventListener("submit", upsertComponent);
   elements.cancelEditBtn.addEventListener("click", resetComponentForm);
   elements.clearComponentsBtn.addEventListener("click", clearComponents);
-  elements.componentsTableBody.addEventListener("click", handleTableAction);
+  elements.hardwareNodeGroups.addEventListener("click", handleTableAction);
 
   elements.filamentName.addEventListener("input", (event) => {
     updateFilamentField("name", event.target.value);
@@ -3798,6 +3954,7 @@ function exposeTestApi() {
     stateNeedsCloudMigration,
     createDefaultState,
     formatMoney,
+    calculateHardwareGroups,
   };
 }
 

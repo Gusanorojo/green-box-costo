@@ -13,7 +13,7 @@ test("normaliza registros viejos a ARS y conserva monedas válidas", () => {
     ],
   });
 
-  assert.equal(normalized.version, 7);
+  assert.equal(normalized.version, 9);
   assert.equal(normalized.printing.electricityCostPerBox, "");
   assert.equal(normalized.currencySettings.displayCurrency, "ARS");
   assert.deepEqual(
@@ -53,7 +53,7 @@ test("migra la lista de compras sin alterar registros anteriores y conserva los 
     ],
   });
 
-  assert.equal(normalized.version, 7);
+  assert.equal(normalized.version, 9);
   assert.equal(normalized.components[0].name, "Caja");
   assert.deepEqual(normalized.purchaseItems, [
     {
@@ -93,8 +93,24 @@ test("migra el costo de electricidad por box y conserva un valor ya cargado", ()
     },
   });
 
-  assert.equal(normalized.version, 7);
+  assert.equal(normalized.version, 9);
   assert.equal(normalized.printing.electricityCostPerBox, "123.45");
+});
+
+test("migra horas de impresión anteriores como horas del lote y conserva la base elegida", () => {
+  const normalized = normalizeState({
+    version: 7,
+    printing: {
+      pieces: [
+        { id: "legacy", name: "Soporte", quantity: "3", weightGrams: "10", printHours: "2" },
+        { id: "new", name: "Tapa", quantity: "2", weightGrams: "5", printHours: "1.5", printHoursBasis: "per-piece" },
+      ],
+    },
+  });
+
+  assert.equal(normalized.printing.pieces[0].printHoursBasis, "batch");
+  assert.equal(normalized.printing.pieces[1].printHoursBasis, "per-piece");
+  assert.equal(normalized.printing.pieces[0].quantity, "3");
 });
 
 test("agrega un inventario vacío a datos anteriores y conserva el stock cargado", () => {
@@ -103,7 +119,7 @@ test("agrega un inventario vacío a datos anteriores y conserva el stock cargado
     components: [{ id: "part-1", name: "Tornillo", quantity: "4", unitPrice: "100" }],
   });
   const withStock = normalizeState({
-    version: 7,
+    version: 8,
     components: [{ id: "part-1", name: "Tornillo", quantity: "4", unitPrice: "100" }],
     inventory: [{
       id: "stock-1",
@@ -116,7 +132,7 @@ test("agrega un inventario vacío a datos anteriores y conserva el stock cargado
     }],
   });
 
-  assert.equal(legacy.version, 7);
+  assert.equal(legacy.version, 9);
   assert.deepEqual(legacy.inventory, []);
   assert.equal(legacy.components[0].name, "Tornillo");
   assert.deepEqual(withStock.inventory, [{
@@ -128,6 +144,31 @@ test("agrega un inventario vacío a datos anteriores y conserva el stock cargado
     quantity: "25.5",
     unit: "unidad",
   }]);
+});
+
+test("agrega grupos de hardware sin cambiar precios ni cantidades anteriores", () => {
+  const normalized = normalizeState({
+    version: 8,
+    components: [
+      { id: "relay", name: "modulo rele 4 canales", quantity: "1", unitPrice: "7189" },
+      { id: "mq", name: "sensor mq135", quantity: "1", unitPrice: "5500" },
+      { id: "soil", name: "sensor humedad de suelo", quantity: "4", unitPrice: "3867" },
+      { id: "unknown", name: "step down", quantity: "2", unitPrice: "4700" },
+      { id: "assigned", name: "Fuente", quantity: "3", unitPrice: "25.50", hardwareNode: "shared" },
+    ],
+  });
+
+  assert.equal(normalized.version, 9);
+  assert.deepEqual(
+    normalized.components.map(({ id, quantity, unitPrice, hardwareNode }) => ({ id, quantity, unitPrice, hardwareNode })),
+    [
+      { id: "relay", quantity: "1", unitPrice: "7189", hardwareNode: "relay" },
+      { id: "mq", quantity: "1", unitPrice: "5500", hardwareNode: "environment" },
+      { id: "soil", quantity: "4", unitPrice: "3867", hardwareNode: "soil" },
+      { id: "unknown", quantity: "2", unitPrice: "4700", hardwareNode: "unassigned" },
+      { id: "assigned", quantity: "3", unitPrice: "25.50", hardwareNode: "shared" },
+    ],
+  );
 });
 
 test("convierte Cloudflare y Railway y suma ambos importes en la moneda elegida", () => {
