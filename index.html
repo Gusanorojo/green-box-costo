@@ -6,7 +6,7 @@
     <title>GREEN BOX V1 | Costos y rentabilidad</title>
     <meta
       name="description"
-      content="Aplicacion local para calcular costos de fabricacion, precio de venta y rentabilidad de GREEN BOX V1."
+      content="Aplicacion de costos, inventario y rentabilidad de GREEN BOX V1."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -14,7 +14,7 @@
     <main class="app-shell">
       <header class="app-header">
         <div>
-          <p class="eyebrow">Sistema local de costos</p>
+          <p class="eyebrow">Sistema de costos</p>
           <h1>GREEN BOX V1</h1>
         </div>
         <div class="header-actions">
@@ -79,6 +79,9 @@
         </button>
         <button class="tab-button" type="button" data-section-target="purchasesSection">
           Lista de compras
+        </button>
+        <button class="tab-button" type="button" data-section-target="stockSection">
+          Stock
         </button>
         <button class="tab-button" type="button" data-section-target="pricingSection">
           Precio
@@ -830,6 +833,61 @@
         </div>
       </section>
 
+      <section class="app-section" id="stockSection" aria-labelledby="stockTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Inventario</p>
+            <h2 id="stockTitle">Stock disponible</h2>
+          </div>
+        </div>
+        <p class="muted-text purchase-help">
+          Elegí elementos de los catálogos existentes y anotá cuánto tenés disponible. Estas cantidades son tu stock actual; no cambian el costo ni la cantidad necesaria para fabricar cada box.
+        </p>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="inventoryItemForm" autocomplete="off">
+            <input type="hidden" id="inventoryItemId" />
+            <h3>Agregar al stock</h3>
+            <label>
+              <span>Elemento del catálogo</span>
+              <select id="inventorySourceSelect" required>
+                <option value="">Seleccioná un elemento</option>
+              </select>
+            </label>
+            <label>
+              <span>Cantidad disponible</span>
+              <input id="inventoryItemQuantity" type="number" min="0" step="any" inputmode="decimal" required />
+            </label>
+            <p class="muted-text input-help">Podés registrar cero si actualmente no te queda stock.</p>
+            <p class="form-message" id="inventoryItemFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="saveInventoryItemBtn">Agregar al stock</button>
+              <button class="secondary-button hidden" type="button" id="cancelInventoryItemEditBtn">Cancelar edición</button>
+            </div>
+          </form>
+
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Elemento</th>
+                    <th>Catálogo</th>
+                    <th>Cantidad disponible</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryItemsTableBody">
+                  <tr>
+                    <td colspan="4" class="empty-row">Todavía no cargaste elementos en stock.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="app-section" id="pricingSection" aria-labelledby="pricingTitle">
         <div class="section-heading">
           <div>
@@ -998,6 +1056,11 @@
       </section>
     </main>
 
+    <script>
+      if (window.location.protocol === "file:") {
+        globalThis.GREEN_BOX_API_URL = "https://green-box-costo.onrender.com";
+      }
+    </script>
     <script src="currency.js"></script>
     <script src="script.js"></script>
   </body>

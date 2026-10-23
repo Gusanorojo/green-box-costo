@@ -1,10 +1,10 @@
 {
   "app": "GREEN BOX",
   "type": "green-box-public-data",
-  "version": 6,
+  "version": 7,
   "publishedAt": null,
   "data": {
-    "version": 6,
+    "version": 7,
     "components": [],
     "printing": {
       "filament": {
@@ -31,6 +31,7 @@
     },
     "monthlyCosts": [],
     "purchaseItems": [],
+    "inventory": [],
     "pricing": {
       "mode": "manual",
       "manualPrice": "",

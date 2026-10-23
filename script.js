@@ -5,7 +5,7 @@ const CLOUD_MERGE_BACKUP_KEY = `${STORAGE_KEY}.cloudMergeBackup`;
 const STORAGE_LOG_PREFIX = "[Green Box persistencia]";
 const PUBLIC_DATA_FILE = "green-box-data.json";
 const API_BASE_URL = (globalThis.GREEN_BOX_API_URL || "").replace(/\/$/, "");
-const CURRENT_VERSION = 6;
+const CURRENT_VERSION = 7;
 const CURRENCY = globalThis.GreenBoxCurrency;
 
 const SUPPLY_UNITS = [
@@ -177,6 +177,15 @@ const elements = {
   purchaseListTotal: document.querySelector("#purchaseListTotal"),
   purchaseCurrencyStatus: document.querySelector("#purchaseCurrencyStatus"),
 
+  inventoryItemForm: document.querySelector("#inventoryItemForm"),
+  inventoryItemId: document.querySelector("#inventoryItemId"),
+  inventorySourceSelect: document.querySelector("#inventorySourceSelect"),
+  inventoryItemQuantity: document.querySelector("#inventoryItemQuantity"),
+  inventoryItemFormMessage: document.querySelector("#inventoryItemFormMessage"),
+  saveInventoryItemBtn: document.querySelector("#saveInventoryItemBtn"),
+  cancelInventoryItemEditBtn: document.querySelector("#cancelInventoryItemEditBtn"),
+  inventoryItemsTableBody: document.querySelector("#inventoryItemsTableBody"),
+
   pricingModeInputs: Array.from(document.querySelectorAll('input[name="pricingMode"]')),
   manualPriceGroup: document.querySelector("#manualPriceGroup"),
   markupGroup: document.querySelector("#markupGroup"),
@@ -260,6 +269,7 @@ function createDefaultState() {
     },
     monthlyCosts: [],
     purchaseItems: [],
+    inventory: [],
     pricing: {
       mode: "manual",
       manualPrice: "",
@@ -749,6 +759,7 @@ function isVersionTwoState(data) {
     Boolean(data.packaging) ||
     Boolean(data.monthlyCosts) ||
     Boolean(data.purchaseItems) ||
+    Boolean(data.inventory) ||
     Boolean(data.pricing) ||
     Boolean(data.adjustments)
   );
@@ -850,6 +861,19 @@ function normalizeVersionTwoState(data) {
           unitPrice: stringValue(item.unitPrice),
           currency: CURRENCY.normalizeCurrency(item.currency),
           supplier: stringValue(item.supplier),
+        }))
+      : [],
+    inventory: Array.isArray(data.inventory)
+      ? data.inventory.map((item) => ({
+          id: stringValue(item.id) || makeId("inventory"),
+          sourceType: ["hardware", "printing-piece", "supplies", "packaging", "filament"].includes(item.sourceType)
+            ? item.sourceType
+            : "",
+          sourceId: stringValue(item.sourceId),
+          sourceCategory: stringValue(item.sourceCategory),
+          name: stringValue(item.name),
+          quantity: stringValue(item.quantity),
+          unit: stringValue(item.unit),
         }))
       : [],
     pricing: {
@@ -1171,6 +1195,14 @@ function mergeStatesWithoutDataLoss(primaryState, secondaryState) {
   report.purchaseItems = purchaseItems.report;
   changed = changed || purchaseItems.changed;
 
+  const inventory = mergeRecordList(merged.inventory, secondary.inventory, {
+    identityFields: ["sourceType", "sourceId"],
+    mergeFields: ["id", "sourceType", "sourceId", "sourceCategory", "name", "quantity", "unit"],
+  });
+  merged.inventory = inventory.list;
+  report.inventory = inventory.report;
+  changed = changed || inventory.changed;
+
   const filament = mergeObjectFields(merged.printing.filament, secondary.printing.filament, [
     "name",
     "spoolPrice",
@@ -1257,6 +1289,7 @@ function stateNeedsCloudMigration(rawState) {
   return data.version !== CURRENT_VERSION
     || !data.currencySettings
     || !Array.isArray(data.purchaseItems)
+    || !Array.isArray(data.inventory)
     || (Array.isArray(data.monthlyCosts)
       && data.monthlyCosts.some((cost) => !Object.prototype.hasOwnProperty.call(cost, "currency")))
     || (Array.isArray(data.printing?.pieces)
@@ -1951,6 +1984,7 @@ function deleteComponent(id) {
   }
 
   snapshotPurchaseSource("hardware", id);
+  snapshotInventorySource("hardware", id);
   deleteListItem(state.components, id);
   saveAndRender();
 }
@@ -1964,7 +1998,10 @@ function clearComponents() {
     return;
   }
 
-  state.components.forEach((component) => snapshotPurchaseSource("hardware", component.id));
+  state.components.forEach((component) => {
+    snapshotPurchaseSource("hardware", component.id);
+    snapshotInventorySource("hardware", component.id);
+  });
   state.components = [];
   resetComponentForm();
   saveAndRender();
@@ -1988,6 +2025,22 @@ function snapshotPurchaseSource(sourceType, sourceId) {
     item.unitPrice = source.unitPrice;
     item.currency = source.currency;
     item.supplier = source.supplier;
+  });
+}
+
+function snapshotInventorySource(sourceType, sourceId) {
+  const source = getInventoryCatalog().find(
+    (item) => item.sourceType === sourceType && item.sourceId === sourceId,
+  );
+
+  if (!source) return;
+
+  state.inventory.forEach((item) => {
+    if (item.sourceType !== sourceType || item.sourceId !== sourceId) return;
+
+    item.sourceCategory = source.sourceCategory;
+    item.name = source.name;
+    item.unit = source.unit;
   });
 }
 
@@ -2065,6 +2118,7 @@ function deletePrintingPiece(id) {
     return;
   }
 
+  snapshotInventorySource("printing-piece", id);
   deleteListItem(state.printing.pieces, id);
   saveAndRender();
 }
@@ -2143,6 +2197,7 @@ function deleteSupply(id) {
   }
 
   snapshotPurchaseSource("supplies", id);
+  snapshotInventorySource("supplies", id);
   deleteListItem(state.supplies, id);
   saveAndRender();
 }
@@ -2291,6 +2346,7 @@ function deletePackaging(id) {
   }
 
   snapshotPurchaseSource("packaging", id);
+  snapshotInventorySource("packaging", id);
   deleteListItem(state.packaging, id);
   saveAndRender();
 }
@@ -2495,6 +2551,7 @@ function resetAllForms() {
   resetPackagingForm();
   resetMonthlyCostForm();
   resetPurchaseItemForm();
+  resetInventoryItemForm();
   setFormMessage(elements.printingConfigMessage, "", false);
   setFormMessage(elements.adjustmentsMessage, "", false);
   setFormMessage(elements.pricingMessage, "", false);
@@ -2542,6 +2599,7 @@ function saveCurrencySettings(event) {
 function updateFilamentField(field, value) {
   if (field === "name" && !stringValue(value).trim()) {
     snapshotPurchaseSource("filament", "filament");
+    snapshotInventorySource("filament", "filament");
   }
   state.printing.filament[field] = stringValue(value);
   saveAndRender();
@@ -2691,6 +2749,7 @@ function renderTables(summary) {
   renderPackaging();
   renderMonthlyCosts();
   renderPurchaseItems();
+  renderInventoryItems();
 }
 
 function renderComponents() {
@@ -3104,6 +3163,245 @@ function renderPurchaseItems() {
   }
 }
 
+function getInventoryCatalog() {
+  const sources = [
+    ...state.components.map((item) => ({
+      sourceType: "hardware",
+      sourceId: item.id,
+      sourceCategory: "Hardware",
+      name: item.name,
+      unit: "unidad",
+    })),
+    ...state.printing.pieces.map((item) => ({
+      sourceType: "printing-piece",
+      sourceId: item.id,
+      sourceCategory: "Piezas impresas",
+      name: item.name,
+      unit: "pieza",
+    })),
+    ...state.supplies.map((item) => ({
+      sourceType: "supplies",
+      sourceId: item.id,
+      sourceCategory: "Insumos",
+      name: item.name,
+      unit: item.unit || "unidad",
+    })),
+    ...state.packaging.map((item) => ({
+      sourceType: "packaging",
+      sourceId: item.id,
+      sourceCategory: "Packaging",
+      name: item.name,
+      unit: "unidad",
+    })),
+  ];
+
+  if (stringValue(state.printing.filament.name).trim()) {
+    sources.push({
+      sourceType: "filament",
+      sourceId: "filament",
+      sourceCategory: "Impresión 3D",
+      name: state.printing.filament.name,
+      unit: "rollo",
+    });
+  }
+
+  return sources.map((source) => ({
+    ...source,
+    key: JSON.stringify([source.sourceType, source.sourceId]),
+  }));
+}
+
+function inventorySourceCategory(sourceType) {
+  return {
+    hardware: "Hardware",
+    "printing-piece": "Piezas impresas",
+    supplies: "Insumos",
+    packaging: "Packaging",
+    filament: "Impresión 3D",
+  }[sourceType] || "Catálogo";
+}
+
+function resolveInventoryItem(item) {
+  const source = getInventoryCatalog().find(
+    (entry) => entry.sourceType === item.sourceType && entry.sourceId === item.sourceId,
+  );
+
+  return source
+    ? { ...item, ...source, sourceAvailable: true }
+    : {
+        ...item,
+        sourceCategory: item.sourceCategory || inventorySourceCategory(item.sourceType),
+        name: item.name || "Elemento sin nombre",
+        unit: item.unit || "unidad",
+        sourceAvailable: false,
+      };
+}
+
+function renderInventorySourceOptions() {
+  const sources = getInventoryCatalog();
+  const selectedKey = stringValue(elements.inventorySourceSelect.value);
+  const editingItem = state.inventory.find(
+    (item) => item.id === elements.inventoryItemId.value,
+  );
+  const previousSelection = selectedKey || (editingItem && (
+    sources.find(
+      (source) => source.sourceType === editingItem.sourceType && source.sourceId === editingItem.sourceId,
+    )?.key || JSON.stringify([editingItem.sourceType, editingItem.sourceId])
+  )) || "";
+  const missingSource = editingItem && editingItem.sourceType && !sources.some(
+    (source) => source.sourceType === editingItem.sourceType && source.sourceId === editingItem.sourceId,
+  );
+  const placeholder = sources.length > 0
+    ? "Seleccioná un elemento"
+    : "Primero cargá elementos en un catálogo";
+  const missingOption = missingSource
+    ? `<option value="${escapeAttribute(JSON.stringify([editingItem.sourceType, editingItem.sourceId]))}">${escapeHtml(editingItem.name || "Elemento")} (ya no está en ${escapeHtml(editingItem.sourceCategory || inventorySourceCategory(editingItem.sourceType))})</option>`
+    : "";
+  const groups = ["hardware", "printing-piece", "supplies", "packaging", "filament"]
+    .map((sourceType) => {
+      const options = sources
+        .filter((source) => source.sourceType === sourceType)
+        .map((source) => `<option value="${escapeAttribute(source.key)}">${escapeHtml(source.name || "Elemento sin nombre")} — ${escapeHtml(source.unit)}</option>`)
+        .join("");
+      return options
+        ? `<optgroup label="${escapeAttribute(inventorySourceCategory(sourceType))}">${options}</optgroup>`
+        : "";
+    })
+    .join("");
+
+  elements.inventorySourceSelect.innerHTML =
+    `<option value="">${placeholder}</option>${missingOption}${groups}`;
+  elements.inventorySourceSelect.value = previousSelection;
+  if (elements.inventorySourceSelect.value !== previousSelection) {
+    elements.inventorySourceSelect.value = "";
+  }
+  elements.saveInventoryItemBtn.disabled = sources.length === 0 && !editingItem;
+}
+
+function renderInventoryItems() {
+  renderInventorySourceOptions();
+
+  if (state.inventory.length === 0) {
+    elements.inventoryItemsTableBody.innerHTML =
+      '<tr><td colspan="4" class="empty-row">Todavía no cargaste elementos en stock.</td></tr>';
+    return;
+  }
+
+  elements.inventoryItemsTableBody.innerHTML = state.inventory
+    .map((item) => {
+      const resolvedItem = resolveInventoryItem(item);
+      const missingSourceNotice = resolvedItem.sourceAvailable
+        ? ""
+        : '<div class="muted-text">El elemento ya no está en el catálogo</div>';
+
+      return `
+        <tr>
+          <td><div class="record-name">${escapeHtml(resolvedItem.name)}</div>${missingSourceNotice}</td>
+          <td>${escapeHtml(resolvedItem.sourceCategory || "—")}</td>
+          <td><strong>${formatPurchaseQuantity(item.quantity)} ${escapeHtml(resolvedItem.unit)}</strong></td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-button" type="button" data-action="edit-inventory-item" data-id="${escapeAttribute(item.id)}">Editar</button>
+              <button class="icon-button danger" type="button" data-action="delete-inventory-item" data-id="${escapeAttribute(item.id)}">Borrar</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function upsertInventoryItem(event) {
+  event.preventDefault();
+
+  const quantity = elements.inventoryItemQuantity.value;
+  const error = firstValidationError([
+    validateNumber(quantity, {
+      label: "La cantidad disponible",
+      required: true,
+      min: 0,
+    }),
+  ]);
+
+  const sourceKey = elements.inventorySourceSelect.value;
+  const editingItem = state.inventory.find((item) => item.id === elements.inventoryItemId.value);
+  const source = getInventoryCatalog().find(
+    (item) => item.key === sourceKey,
+  ) || (editingItem && sourceKey === JSON.stringify([editingItem.sourceType, editingItem.sourceId])
+    ? {
+        sourceType: editingItem.sourceType,
+        sourceId: editingItem.sourceId,
+        sourceCategory: editingItem.sourceCategory,
+        name: editingItem.name,
+        unit: editingItem.unit,
+      }
+    : null);
+
+  if (error || !source) {
+    setFormMessage(
+      elements.inventoryItemFormMessage,
+      error || "Elegí un elemento del catálogo.",
+    );
+    return;
+  }
+
+  const editingId = elements.inventoryItemId.value;
+  const duplicate = state.inventory.some((item) =>
+    item.id !== editingId
+      && item.sourceType === source.sourceType
+      && item.sourceId === source.sourceId,
+  );
+
+  if (duplicate) {
+    setFormMessage(elements.inventoryItemFormMessage, "Ese elemento ya está en stock. Editá la cantidad del registro existente.");
+    return;
+  }
+
+  upsertListItem(state.inventory, {
+    id: editingId || makeId("inventory"),
+    sourceType: source.sourceType,
+    sourceId: source.sourceId,
+    sourceCategory: source.sourceCategory,
+    name: source.name,
+    quantity: stringValue(quantity),
+    unit: source.unit,
+  });
+
+  resetInventoryItemForm();
+  saveAndRender();
+}
+
+function editInventoryItem(id) {
+  const item = state.inventory.find((entry) => entry.id === id);
+
+  if (!item) return;
+
+  elements.inventoryItemId.value = item.id;
+  elements.inventoryItemQuantity.value = item.quantity;
+  renderInventorySourceOptions();
+  elements.inventorySourceSelect.value = JSON.stringify([item.sourceType, item.sourceId]);
+  elements.saveInventoryItemBtn.textContent = "Guardar cambios";
+  elements.cancelInventoryItemEditBtn.classList.remove("hidden");
+  setFormMessage(elements.inventoryItemFormMessage, "", false);
+  elements.inventoryItemQuantity.focus();
+}
+
+function deleteInventoryItem(id) {
+  if (!window.confirm("¿Querés eliminar este elemento del stock?")) return;
+
+  deleteListItem(state.inventory, id);
+  saveAndRender();
+}
+
+function resetInventoryItemForm() {
+  elements.inventoryItemId.value = "";
+  elements.inventorySourceSelect.value = "";
+  elements.inventoryItemQuantity.value = "";
+  elements.saveInventoryItemBtn.textContent = "Agregar al stock";
+  elements.cancelInventoryItemEditBtn.classList.add("hidden");
+  setFormMessage(elements.inventoryItemFormMessage, "", false);
+}
+
 function renderSummary(summary) {
   const isLoss = summary.contributionPerUnit < 0;
 
@@ -3318,12 +3616,21 @@ function handleTableAction(event) {
     "delete-monthly-cost": deleteMonthlyCost,
     "edit-purchase-item": editPurchaseItem,
     "delete-purchase-item": deletePurchaseItem,
+    "edit-inventory-item": editInventoryItem,
+    "delete-inventory-item": deleteInventoryItem,
   };
 
   handlers[action]?.(id);
 }
 
 function bindEvents() {
+  document.addEventListener("wheel", (event) => {
+    const input = event.target.closest?.('input[type="number"]');
+    if (input && document.activeElement === input) {
+      input.blur();
+    }
+  }, { capture: true, passive: true });
+
   elements.tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       setActiveSection(button.dataset.sectionTarget);
@@ -3407,6 +3714,10 @@ function bindEvents() {
     renderPurchaseSourceDetails();
     setFormMessage(elements.purchaseItemFormMessage, "", false);
   });
+
+  elements.inventoryItemForm.addEventListener("submit", upsertInventoryItem);
+  elements.cancelInventoryItemEditBtn.addEventListener("click", resetInventoryItemForm);
+  elements.inventoryItemsTableBody.addEventListener("click", handleTableAction);
 
   elements.pricingModeInputs.forEach((input) => {
     input.addEventListener("change", (event) => {

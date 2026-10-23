@@ -10,7 +10,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL;
 const WRITE_KEY = process.env.GREEN_BOX_WRITE_KEY || "";
 const STATE_ID = "main";
-const CURRENT_VERSION = 6;
+const CURRENT_VERSION = 7;
 const SUPPLY_UNITS = [
   "unidad",
   "metro",
@@ -60,6 +60,7 @@ const defaultState = {
   },
   monthlyCosts: [],
   purchaseItems: [],
+  inventory: [],
   pricing: {
     mode: "manual",
     manualPrice: "",
@@ -226,6 +227,7 @@ function normalizeState(input) {
     data.packaging ||
     data.monthlyCosts ||
     data.purchaseItems ||
+    data.inventory ||
     data.pricing ||
     data.adjustments
   ) {
@@ -324,6 +326,19 @@ function normalizeVersionTwoState(data) {
           unitPrice: cleanString(item.unitPrice),
           currency: currency.normalizeCurrency(item.currency),
           supplier: cleanString(item.supplier),
+        }))
+      : [],
+    inventory: Array.isArray(data.inventory)
+      ? data.inventory.map((item) => ({
+          id: cleanString(item.id) || cryptoSafeId("inventory"),
+          sourceType: ["hardware", "printing-piece", "supplies", "packaging", "filament"].includes(item.sourceType)
+            ? item.sourceType
+            : "",
+          sourceId: cleanString(item.sourceId),
+          sourceCategory: cleanString(item.sourceCategory),
+          name: cleanString(item.name),
+          quantity: cleanString(item.quantity),
+          unit: cleanString(item.unit),
         }))
       : [],
     pricing: {

@@ -13,7 +13,7 @@ test("normaliza registros viejos a ARS y conserva monedas válidas", () => {
     ],
   });
 
-  assert.equal(normalized.version, 6);
+  assert.equal(normalized.version, 7);
   assert.equal(normalized.printing.electricityCostPerBox, "");
   assert.equal(normalized.currencySettings.displayCurrency, "ARS");
   assert.deepEqual(
@@ -53,7 +53,7 @@ test("migra la lista de compras sin alterar registros anteriores y conserva los 
     ],
   });
 
-  assert.equal(normalized.version, 6);
+  assert.equal(normalized.version, 7);
   assert.equal(normalized.components[0].name, "Caja");
   assert.deepEqual(normalized.purchaseItems, [
     {
@@ -93,8 +93,41 @@ test("migra el costo de electricidad por box y conserva un valor ya cargado", ()
     },
   });
 
-  assert.equal(normalized.version, 6);
+  assert.equal(normalized.version, 7);
   assert.equal(normalized.printing.electricityCostPerBox, "123.45");
+});
+
+test("agrega un inventario vacío a datos anteriores y conserva el stock cargado", () => {
+  const legacy = normalizeState({
+    version: 6,
+    components: [{ id: "part-1", name: "Tornillo", quantity: "4", unitPrice: "100" }],
+  });
+  const withStock = normalizeState({
+    version: 7,
+    components: [{ id: "part-1", name: "Tornillo", quantity: "4", unitPrice: "100" }],
+    inventory: [{
+      id: "stock-1",
+      sourceType: "hardware",
+      sourceId: "part-1",
+      sourceCategory: "Hardware",
+      name: "Tornillo",
+      quantity: "25.5",
+      unit: "unidad",
+    }],
+  });
+
+  assert.equal(legacy.version, 7);
+  assert.deepEqual(legacy.inventory, []);
+  assert.equal(legacy.components[0].name, "Tornillo");
+  assert.deepEqual(withStock.inventory, [{
+    id: "stock-1",
+    sourceType: "hardware",
+    sourceId: "part-1",
+    sourceCategory: "Hardware",
+    name: "Tornillo",
+    quantity: "25.5",
+    unit: "unidad",
+  }]);
 });
 
 test("convierte Cloudflare y Railway y suma ambos importes en la moneda elegida", () => {
