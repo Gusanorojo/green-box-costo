@@ -2,6 +2,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { Pool } = require("pg");
+const currency = require("./currency");
 
 loadEnvFile();
 
@@ -9,7 +10,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL;
 const WRITE_KEY = process.env.GREEN_BOX_WRITE_KEY || "";
 const STATE_ID = "main";
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 6;
 const SUPPLY_UNITS = [
   "unidad",
   "metro",
@@ -42,6 +43,7 @@ const defaultState = {
     },
     pieces: [],
     wastePercent: "",
+    electricityCostPerBox: "",
     legacyManualCost: "",
   },
   supplies: [],
@@ -51,7 +53,13 @@ const defaultState = {
     wastePercent: "",
     warrantyPercent: "",
   },
+  currencySettings: {
+    displayCurrency: "ARS",
+    usdArsRate: "",
+    rateUpdatedAt: "",
+  },
   monthlyCosts: [],
+  purchaseItems: [],
   pricing: {
     mode: "manual",
     manualPrice: "",
@@ -72,6 +80,7 @@ const staticFiles = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
   ["/styles.css", "styles.css"],
+  ["/currency.js", "currency.js"],
   ["/script.js", "script.js"],
   ["/green-box-data.json", "green-box-data.json"],
 ]);
@@ -167,8 +176,16 @@ function setCorsHeaders(response) {
   );
 }
 
+function setSecurityHeaders(response) {
+  response.setHeader(
+    "Content-Security-Policy",
+    "frame-ancestors 'self' https://www.notion.so https://notion.so https://*.notion.site",
+  );
+}
+
 function sendJson(response, statusCode, payload) {
   setCorsHeaders(response);
+  setSecurityHeaders(response);
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
   });
@@ -202,11 +219,13 @@ function normalizeState(input) {
 
   if (
     data.version === CURRENT_VERSION ||
+    data.version === 2 ||
     data.printing ||
     data.supplies ||
     data.labor ||
     data.packaging ||
     data.monthlyCosts ||
+    data.purchaseItems ||
     data.pricing ||
     data.adjustments
   ) {
@@ -232,9 +251,11 @@ function normalizeVersionTwoState(data) {
             name: cleanString(piece.name),
             quantity: cleanString(piece.quantity),
             weightGrams: cleanString(piece.weightGrams),
+            printHours: cleanString(piece.printHours ?? piece.print_hours ?? piece.hours),
           }))
         : [],
       wastePercent: cleanString(data.printing?.wastePercent),
+      electricityCostPerBox: cleanString(data.printing?.electricityCostPerBox),
       legacyManualCost: cleanString(data.printing?.legacyManualCost),
     },
     supplies: Array.isArray(data.supplies)
@@ -269,6 +290,11 @@ function normalizeVersionTwoState(data) {
       wastePercent: cleanString(data.adjustments?.wastePercent),
       warrantyPercent: cleanString(data.adjustments?.warrantyPercent),
     },
+    currencySettings: {
+      displayCurrency: currency.normalizeCurrency(data.currencySettings?.displayCurrency),
+      usdArsRate: cleanString(data.currencySettings?.usdArsRate),
+      rateUpdatedAt: cleanString(data.currencySettings?.rateUpdatedAt),
+    },
     monthlyCosts: Array.isArray(data.monthlyCosts)
       ? data.monthlyCosts.map((cost) => ({
           id: cleanString(cost.id) || cryptoSafeId("monthly"),
@@ -277,9 +303,27 @@ function normalizeVersionTwoState(data) {
             ? cost.category
             : "Otros",
           amount: cleanString(cost.amount),
+          currency: currency.normalizeCurrency(cost.currency),
           periodicity: PERIODICITIES.includes(cost.periodicity)
             ? cost.periodicity
             : "monthly",
+        }))
+      : [],
+    purchaseItems: Array.isArray(data.purchaseItems)
+      ? data.purchaseItems.map((item) => ({
+          id: cleanString(item.id) || cryptoSafeId("purchase"),
+          componentId: cleanString(item.componentId),
+          sourceType: ["hardware", "supplies", "packaging", "filament"].includes(item.sourceType)
+            ? item.sourceType
+            : cleanString(item.componentId) ? "hardware" : "",
+          sourceId: cleanString(item.sourceId || item.componentId),
+          sourceCategory: cleanString(item.sourceCategory),
+          name: cleanString(item.name),
+          quantity: cleanString(item.quantity),
+          unit: cleanString(item.unit),
+          unitPrice: cleanString(item.unitPrice),
+          currency: currency.normalizeCurrency(item.currency),
+          supplier: cleanString(item.supplier),
         }))
       : [],
     pricing: {
@@ -471,6 +515,7 @@ function serveStatic(request, response, pathname) {
 
   fs.readFile(filePath, (error, data) => {
     if (error) {
+      setSecurityHeaders(response);
       response.writeHead(404, {
         "Content-Type": "text/plain; charset=utf-8",
       });
@@ -478,6 +523,7 @@ function serveStatic(request, response, pathname) {
       return;
     }
 
+    setSecurityHeaders(response);
     response.writeHead(200, {
       "Content-Type": contentTypes[extension] || "application/octet-stream",
     });
@@ -504,6 +550,13 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`GREEN BOX escuchando en http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`GREEN BOX escuchando en http://localhost:${PORT}`);
+  });
+}
+
+module.exports = {
+  normalizeState,
+  normalizeVersionTwoState,
+};

@@ -77,6 +77,9 @@
         <button class="tab-button" type="button" data-section-target="monthlySection">
           Costos mensuales
         </button>
+        <button class="tab-button" type="button" data-section-target="purchasesSection">
+          Lista de compras
+        </button>
         <button class="tab-button" type="button" data-section-target="pricingSection">
           Precio
         </button>
@@ -262,6 +265,11 @@
                 <span>% desperdicio / impresiones fallidas</span>
                 <input id="printingWastePercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
               </label>
+              <label>
+                <span>Costo de luz por box (ARS)</span>
+                <input id="printingElectricityCostPerBox" type="number" min="0" step="any" inputmode="decimal" placeholder="0" />
+              </label>
+              <p class="muted-text input-help">Este importe se suma al costo de fabricación de cada box. Ingresá acá el costo estimado de electricidad de una unidad.</p>
               <p class="form-message" id="printingConfigMessage" aria-live="polite"></p>
             </div>
             <div class="totals-list">
@@ -274,12 +282,20 @@
                 <strong id="printingTotalGrams">0 g</strong>
               </div>
               <div>
+                <span>Horas totales de impresion</span>
+                <strong id="printingTotalHours">0 h</strong>
+              </div>
+              <div>
                 <span>Costo base</span>
                 <strong id="printingBaseCost">$ 0,00</strong>
               </div>
               <div>
                 <span>Desperdicio</span>
                 <strong id="printingWasteCost">$ 0,00</strong>
+              </div>
+              <div>
+                <span>Electricidad por box</span>
+                <strong id="printingElectricityTotal">$ 0,00</strong>
               </div>
               <div class="total-line">
                 <span>Total impresion 3D</span>
@@ -306,6 +322,10 @@
                   <input id="printingPieceWeight" type="number" min="0.01" step="0.01" inputmode="decimal" />
                 </label>
               </div>
+              <label>
+                <span>Horas de impresion</span>
+                <input id="printingPieceHours" type="number" min="0" step="0.01" inputmode="decimal" />
+              </label>
               <p class="form-message" id="printingPieceFormMessage" aria-live="polite"></p>
               <div class="form-actions">
                 <button class="primary-button" type="submit" id="savePrintingPieceBtn">
@@ -326,13 +346,14 @@
                       <th>Cantidad</th>
                       <th>Peso unitario</th>
                       <th>Gramos</th>
+                      <th>Horas impresion</th>
                       <th>Costo</th>
                       <th class="action-col">Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="printingPiecesTableBody">
                     <tr>
-                      <td colspan="6" class="empty-row">Sin piezas cargadas.</td>
+                      <td colspan="7" class="empty-row">Sin piezas cargadas.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -623,6 +644,44 @@
           </div>
         </div>
 
+        <article class="panel currency-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-label">Configuración</p>
+              <h3>Moneda y tipo de cambio</h3>
+            </div>
+          </div>
+          <p class="muted-text currency-help">
+            Los costos de fabricación y precios del resto del sistema se cargan en ARS; esta opción cambia su visualización.
+          </p>
+          <form id="currencySettingsForm" class="currency-settings-form" autocomplete="off">
+            <div class="form-row">
+              <label>
+                <span>Moneda de visualización</span>
+                <select id="displayCurrency">
+                  <option value="ARS">ARS — Peso argentino</option>
+                  <option value="USD">USD — Dólar estadounidense</option>
+                </select>
+              </label>
+              <label>
+                <span>Tipo de cambio (ARS por USD)</span>
+                <input id="usdArsRate" type="number" min="0" step="any" inputmode="decimal" placeholder="Ingresar cotización" />
+              </label>
+            </div>
+            <div class="form-row currency-form-footer">
+              <label>
+                <span>Fecha de actualización</span>
+                <input id="rateUpdatedAt" type="date" />
+              </label>
+              <div class="form-actions">
+                <button class="primary-button" type="submit">Guardar configuración</button>
+              </div>
+            </div>
+            <p class="form-message" id="currencySettingsMessage" aria-live="polite"></p>
+          </form>
+          <p class="currency-status currency-status-warning" id="currencyStatus" aria-live="polite"></p>
+        </article>
+
         <div class="workspace-grid">
           <form class="panel data-form" id="monthlyCostForm" autocomplete="off">
             <input type="hidden" id="monthlyCostId" />
@@ -651,10 +710,20 @@
                 </select>
               </label>
             </div>
-            <label>
-              <span>Monto</span>
-              <input id="monthlyAmount" type="number" min="0" step="0.01" inputmode="decimal" />
-            </label>
+            <div class="form-row">
+              <label>
+                <span>Monto original</span>
+                <input id="monthlyAmount" type="number" min="0" step="any" inputmode="decimal" />
+              </label>
+              <label>
+                <span>Moneda</span>
+                <select id="monthlyCurrency">
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+            </div>
+            <p class="muted-text input-help">Cargá el importe sin separador de miles.</p>
             <p class="form-message" id="monthlyCostFormMessage" aria-live="polite"></p>
             <div class="form-actions">
               <button class="primary-button" type="submit" id="saveMonthlyCostBtn">
@@ -674,8 +743,8 @@
                     <th>Concepto</th>
                     <th>Categoria</th>
                     <th>Periodicidad</th>
-                    <th>Monto</th>
-                    <th>Equivalente mensual</th>
+                    <th>Importe original</th>
+                    <th id="monthlyEquivalentHeading">Equivalente mensual (ARS)</th>
                     <th class="action-col">Acciones</th>
                   </tr>
                 </thead>
@@ -687,9 +756,76 @@
               </table>
             </div>
             <div class="table-total">
-              <span>Costos fijos mensuales</span>
+              <span id="monthlyFixedCostsHeading">Costos fijos mensuales (ARS)</span>
               <strong id="monthlyFixedCosts">$ 0,00</strong>
             </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-section" id="purchasesSection" aria-labelledby="purchasesTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Organización</p>
+            <h2 id="purchasesTitle">Lista de compras</h2>
+          </div>
+        </div>
+        <p class="muted-text purchase-help">
+          Seleccioná elementos ya cargados en Hardware, Insumos, Packaging o Impresión 3D e indicá cuánto necesitás comprar. El precio y el proveedor se toman de cada catálogo, sin volver a cargarlos.
+        </p>
+
+        <div class="workspace-grid">
+          <form class="panel data-form" id="purchaseItemForm" autocomplete="off">
+            <input type="hidden" id="purchaseItemId" />
+            <h3>Agregar a la lista</h3>
+            <label>
+              <span>Elemento del catálogo</span>
+              <select id="purchaseSourceSelect">
+                <option value="">Seleccioná un elemento</option>
+              </select>
+            </label>
+            <p class="muted-text input-help" id="purchaseSourceDetails">
+              El nombre, proveedor y precio se toman del elemento guardado en su catálogo.
+            </p>
+            <label>
+              <span>Cantidad que necesitás comprar</span>
+              <input id="purchaseItemQuantity" type="number" min="0" step="any" inputmode="decimal" />
+            </label>
+            <p class="muted-text input-help">El subtotal se calcula con el precio actual del elemento × la cantidad a comprar.</p>
+            <p class="form-message" id="purchaseItemFormMessage" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary-button" type="submit" id="savePurchaseItemBtn">Agregar compra</button>
+              <button class="secondary-button hidden" type="button" id="cancelPurchaseItemEditBtn">Cancelar edición</button>
+            </div>
+          </form>
+
+          <article class="panel table-panel">
+            <div class="table-wrap">
+              <table class="purchase-table">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Catálogo</th>
+                    <th>Proveedor</th>
+                    <th>Cantidad a comprar</th>
+                    <th>Precio unitario</th>
+                    <th>Total original</th>
+                    <th id="purchaseEquivalentHeading">Equivalente (ARS)</th>
+                    <th class="action-col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="purchaseItemsTableBody">
+                  <tr>
+                    <td colspan="8" class="empty-row">Todavía no agregaste compras.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="table-total">
+              <span id="purchaseListTotalHeading">Total estimado (ARS)</span>
+              <strong id="purchaseListTotal">ARS 0,00</strong>
+            </div>
+            <p class="currency-status currency-status-warning hidden" id="purchaseCurrencyStatus" aria-live="polite"></p>
           </article>
         </div>
       </section>
@@ -862,6 +998,7 @@
       </section>
     </main>
 
+    <script src="currency.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

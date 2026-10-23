@@ -1,8 +1,12 @@
 const STORAGE_KEY = "greenBoxCostManager";
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}.legacyV1Backup`;
+const HARDWARE_RECOVERY_BACKUP_KEY = `${STORAGE_KEY}.hardwareRecoveryBackup`;
+const CLOUD_MERGE_BACKUP_KEY = `${STORAGE_KEY}.cloudMergeBackup`;
+const STORAGE_LOG_PREFIX = "[Green Box persistencia]";
 const PUBLIC_DATA_FILE = "green-box-data.json";
 const API_BASE_URL = (globalThis.GREEN_BOX_API_URL || "").replace(/\/$/, "");
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 6;
+const CURRENCY = globalThis.GreenBoxCurrency;
 
 const SUPPLY_UNITS = [
   "unidad",
@@ -72,17 +76,21 @@ const elements = {
   filamentSpoolPrice: document.querySelector("#filamentSpoolPrice"),
   filamentSpoolWeight: document.querySelector("#filamentSpoolWeight"),
   printingWastePercent: document.querySelector("#printingWastePercent"),
+  printingElectricityCostInput: document.querySelector("#printingElectricityCostPerBox"),
+  printingElectricityTotal: document.querySelector("#printingElectricityTotal"),
   printingConfigMessage: document.querySelector("#printingConfigMessage"),
   filamentPricePerGram: document.querySelector("#filamentPricePerGram"),
   printingTotalGrams: document.querySelector("#printingTotalGrams"),
   printingBaseCost: document.querySelector("#printingBaseCost"),
   printingWasteCost: document.querySelector("#printingWasteCost"),
   printingTotal: document.querySelector("#printingTotal"),
+  printingTotalHours: document.querySelector("#printingTotalHours"),
   printingPieceForm: document.querySelector("#printingPieceForm"),
   printingPieceId: document.querySelector("#printingPieceId"),
   printingPieceName: document.querySelector("#printingPieceName"),
   printingPieceQty: document.querySelector("#printingPieceQty"),
   printingPieceWeight: document.querySelector("#printingPieceWeight"),
+  printingPieceHours: document.querySelector("#printingPieceHours"),
   printingPieceFormMessage: document.querySelector("#printingPieceFormMessage"),
   savePrintingPieceBtn: document.querySelector("#savePrintingPieceBtn"),
   cancelPrintingPieceEditBtn: document.querySelector("#cancelPrintingPieceEditBtn"),
@@ -140,11 +148,34 @@ const elements = {
   monthlyCategory: document.querySelector("#monthlyCategory"),
   monthlyPeriodicity: document.querySelector("#monthlyPeriodicity"),
   monthlyAmount: document.querySelector("#monthlyAmount"),
+  monthlyCurrency: document.querySelector("#monthlyCurrency"),
   monthlyCostFormMessage: document.querySelector("#monthlyCostFormMessage"),
   saveMonthlyCostBtn: document.querySelector("#saveMonthlyCostBtn"),
   cancelMonthlyCostEditBtn: document.querySelector("#cancelMonthlyCostEditBtn"),
   monthlyCostsTableBody: document.querySelector("#monthlyCostsTableBody"),
   monthlyFixedCosts: document.querySelector("#monthlyFixedCosts"),
+  monthlyEquivalentHeading: document.querySelector("#monthlyEquivalentHeading"),
+  monthlyFixedCostsHeading: document.querySelector("#monthlyFixedCostsHeading"),
+  currencySettingsForm: document.querySelector("#currencySettingsForm"),
+  displayCurrency: document.querySelector("#displayCurrency"),
+  usdArsRate: document.querySelector("#usdArsRate"),
+  rateUpdatedAt: document.querySelector("#rateUpdatedAt"),
+  currencySettingsMessage: document.querySelector("#currencySettingsMessage"),
+  currencyStatus: document.querySelector("#currencyStatus"),
+
+  purchaseItemForm: document.querySelector("#purchaseItemForm"),
+  purchaseItemId: document.querySelector("#purchaseItemId"),
+  purchaseSourceSelect: document.querySelector("#purchaseSourceSelect"),
+  purchaseSourceDetails: document.querySelector("#purchaseSourceDetails"),
+  purchaseItemQuantity: document.querySelector("#purchaseItemQuantity"),
+  purchaseItemFormMessage: document.querySelector("#purchaseItemFormMessage"),
+  savePurchaseItemBtn: document.querySelector("#savePurchaseItemBtn"),
+  cancelPurchaseItemEditBtn: document.querySelector("#cancelPurchaseItemEditBtn"),
+  purchaseItemsTableBody: document.querySelector("#purchaseItemsTableBody"),
+  purchaseEquivalentHeading: document.querySelector("#purchaseEquivalentHeading"),
+  purchaseListTotalHeading: document.querySelector("#purchaseListTotalHeading"),
+  purchaseListTotal: document.querySelector("#purchaseListTotal"),
+  purchaseCurrencyStatus: document.querySelector("#purchaseCurrencyStatus"),
 
   pricingModeInputs: Array.from(document.querySelectorAll('input[name="pricingMode"]')),
   manualPriceGroup: document.querySelector("#manualPriceGroup"),
@@ -190,9 +221,9 @@ const decimalFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 2,
 });
 
-const moneyNumberFormatter = new Intl.NumberFormat("es-AR", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
+const purchaseQuantityFormatter = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 6,
 });
 
 const percentFormatter = new Intl.NumberFormat("es-AR", {
@@ -212,6 +243,7 @@ function createDefaultState() {
       },
       pieces: [],
       wastePercent: "",
+      electricityCostPerBox: "",
       legacyManualCost: "",
     },
     supplies: [],
@@ -221,7 +253,13 @@ function createDefaultState() {
       wastePercent: "",
       warrantyPercent: "",
     },
+    currencySettings: {
+      displayCurrency: "ARS",
+      usdArsRate: "",
+      rateUpdatedAt: "",
+    },
     monthlyCosts: [],
+    purchaseItems: [],
     pricing: {
       mode: "manual",
       manualPrice: "",
@@ -267,6 +305,30 @@ function removeLocalStorage(key) {
   }
 }
 
+function listLocalStorageKeys() {
+  const keys = [];
+
+  try {
+    const storage = globalThis.localStorage;
+
+    if (!storage) {
+      return keys;
+    }
+
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+
+      if (key) {
+        keys.push(key);
+      }
+    }
+  } catch (error) {
+    console.warn(`${STORAGE_LOG_PREFIX} No se pudieron listar claves de localStorage.`, error);
+  }
+
+  return keys;
+}
+
 function parseJsonSafely(raw, sourceLabel) {
   if (!raw) {
     return null;
@@ -278,6 +340,27 @@ function parseJsonSafely(raw, sourceLabel) {
     console.warn(`No se pudo interpretar JSON de ${sourceLabel}.`, error);
     return null;
   }
+}
+
+function parseJsonForRecovery(raw) {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function logStorageInfo(message, data) {
+  if (data === undefined) {
+    console.info(`${STORAGE_LOG_PREFIX} ${message}`);
+    return;
+  }
+
+  console.info(`${STORAGE_LOG_PREFIX} ${message}`, data);
 }
 
 function toNumber(value) {
@@ -313,6 +396,14 @@ function stringValue(value) {
   return String(value ?? "").trim();
 }
 
+function rawStringValue(value) {
+  return String(value ?? "");
+}
+
+function firstPresentValue(values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
 function makeId(prefix = "record") {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -322,9 +413,34 @@ function makeId(prefix = "record") {
 }
 
 function formatMoney(value) {
-  const number = Number.isFinite(value) ? value : 0;
-  const prefix = number < 0 ? "- " : "";
-  return `${prefix}$ ${moneyNumberFormatter.format(Math.abs(number))}`;
+  if (!Number.isFinite(value)) {
+    return "Configurar USD/ARS";
+  }
+
+  const targetCurrency = state.currencySettings.displayCurrency;
+  const minorUnits = CURRENCY.convertAmountToMinorUnits(
+    value,
+    "ARS",
+    targetCurrency,
+    state.currencySettings.usdArsRate,
+  );
+  return formatMoneyMinorUnits(minorUnits, targetCurrency);
+}
+
+function formatMoneyOriginal(value, currencyCode) {
+  return formatMoneyMinorUnits(CURRENCY.toMinorUnits(value), currencyCode);
+}
+
+function formatMoneyMinorUnits(minorUnits, currencyCode) {
+  if (minorUnits === null) {
+    return "Configurar USD/ARS";
+  }
+
+  const absolute = minorUnits < 0n ? -minorUnits : minorUnits;
+  const whole = (absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const cents = (absolute % 100n).toString().padStart(2, "0");
+  const prefix = minorUnits < 0n ? "- " : "";
+  return `${prefix}${currencyCode} ${whole},${cents}`;
 }
 
 function formatPercent(value) {
@@ -341,6 +457,11 @@ function formatQuantity(value, suffix = "") {
   return `${decimalFormatter.format(number)}${unit}`;
 }
 
+function formatPurchaseQuantity(value) {
+  const number = toNumber(value);
+  return Number.isFinite(number) ? purchaseQuantityFormatter.format(number) : stringValue(value);
+}
+
 function formatPeriodicity(value) {
   return value === "annual" ? "anual" : "mensual";
 }
@@ -353,16 +474,22 @@ function calculatePrintingPiece(piece, pricePerGram) {
   const quantity = positiveQuantity(piece?.quantity);
   const unitWeightGrams = positiveQuantity(piece?.weightGrams);
   const totalGrams = quantity * unitWeightGrams;
+  const printHours = nonNegativeNumber(piece?.printHours);
 
   return {
     totalGrams,
     baseCost: totalGrams * pricePerGram,
+    printHours,
   };
 }
 
-function calculateMonthlyEquivalent(cost) {
-  const amount = nonNegativeNumber(cost?.amount);
-  return cost?.periodicity === "annual" ? amount / 12 : amount;
+function calculateMonthlyEquivalent(cost, targetCurrency = state.currencySettings.displayCurrency) {
+  const minorUnits = CURRENCY.monthlyEquivalentMinorUnits(
+    cost,
+    targetCurrency,
+    state.currencySettings.usdArsRate,
+  );
+  return minorUnits === null ? null : CURRENCY.minorUnitsToNumber(minorUnits);
 }
 
 function calculateFinancialSummary(inputState = state) {
@@ -381,6 +508,7 @@ function calculateFinancialSummary(inputState = state) {
       ...piece,
       totalGrams: result.totalGrams,
       baseCost: result.baseCost,
+      printHours: result.printHours,
     };
   });
   const printingPiecesBaseCost = printingPieces.reduce(
@@ -391,9 +519,17 @@ function calculateFinancialSummary(inputState = state) {
   const printingBaseCost = printingPiecesBaseCost + migratedPrintingCost;
   const printingWastePercent = percentNumber(current.printing.wastePercent);
   const printingWasteCost = (printingBaseCost * printingWastePercent) / 100;
-  const printingTotal = printingBaseCost + printingWasteCost;
+  const printingElectricityCostPerBox = nonNegativeNumber(
+    current.printing.electricityCostPerBox,
+  );
+  const printingTotal =
+    printingBaseCost + printingWasteCost + printingElectricityCostPerBox;
   const printingTotalGrams = printingPieces.reduce(
     (total, piece) => total + piece.totalGrams,
+    0,
+  );
+  const printingTotalHours = printingPieces.reduce(
+    (total, piece) => total + piece.printHours,
     0,
   );
 
@@ -424,9 +560,18 @@ function calculateFinancialSummary(inputState = state) {
   const warrantyReserve = (warrantyBase * warrantyPercent) / 100;
   const variableUnitCost = directBaseCost + wasteCost + warrantyReserve;
 
-  const monthlyFixedCosts = current.monthlyCosts.reduce(
-    (total, cost) => total + calculateMonthlyEquivalent(cost),
-    0,
+  const monthlyFixedCostsMinorUnits = CURRENCY.sumMonthlyCostsMinorUnits(
+    current.monthlyCosts,
+    "ARS",
+    current.currencySettings.usdArsRate,
+  );
+  const monthlyFixedCosts = monthlyFixedCostsMinorUnits === null
+    ? null
+    : CURRENCY.minorUnitsToNumber(monthlyFixedCostsMinorUnits);
+  const monthlyFixedCostsDisplayMinorUnits = CURRENCY.sumMonthlyCostsMinorUnits(
+    current.monthlyCosts,
+    current.currencySettings.displayCurrency,
+    current.currencySettings.usdArsRate,
   );
 
   const pricing = calculateSalePrice(current.pricing, variableUnitCost);
@@ -446,7 +591,9 @@ function calculateFinancialSummary(inputState = state) {
   const investment = variableUnitCost * simulatorQuantity;
   const revenue = salePrice * simulatorQuantity;
   const contributionTotal = contributionPerUnit * simulatorQuantity;
-  const estimatedResult = contributionTotal - monthlyFixedCosts;
+  const estimatedResult = monthlyFixedCosts === null
+    ? null
+    : contributionTotal - monthlyFixedCosts;
 
   return {
     hardwareTotal,
@@ -457,8 +604,10 @@ function calculateFinancialSummary(inputState = state) {
     printingBaseCost,
     printingWastePercent,
     printingWasteCost,
+    printingElectricityCostPerBox,
     printingTotal,
     printingTotalGrams,
+    printingTotalHours,
     suppliesTotal,
     laborHoursTotal,
     laborTotal,
@@ -472,6 +621,7 @@ function calculateFinancialSummary(inputState = state) {
     warrantyReserve,
     variableUnitCost,
     monthlyFixedCosts,
+    monthlyFixedCostsDisplayMinorUnits,
     pricingMode: current.pricing.mode,
     pricingError: pricing.error,
     salePrice,
@@ -523,6 +673,13 @@ function calculateSalePrice(pricing, variableUnitCost) {
 }
 
 function calculateBreakEven(monthlyFixedCosts, salePrice, contributionPerUnit) {
+  if (monthlyFixedCosts === null) {
+    return {
+      units: null,
+      message: "Configura el tipo de cambio USD/ARS para calcular los costos fijos mensuales.",
+    };
+  }
+
   if (salePrice <= 0) {
     return {
       units: null,
@@ -585,11 +742,13 @@ function normalizeImportedState(importedData) {
 function isVersionTwoState(data) {
   return (
     data.version === CURRENT_VERSION ||
+    data.version === 2 ||
     Boolean(data.printing) ||
     Boolean(data.supplies) ||
     Boolean(data.labor) ||
     Boolean(data.packaging) ||
     Boolean(data.monthlyCosts) ||
+    Boolean(data.purchaseItems) ||
     Boolean(data.pricing) ||
     Boolean(data.adjustments)
   );
@@ -620,9 +779,11 @@ function normalizeVersionTwoState(data) {
             name: stringValue(piece.name),
             quantity: stringValue(piece.quantity),
             weightGrams: stringValue(piece.weightGrams),
+            printHours: stringValue(piece.printHours ?? piece.print_hours ?? piece.hours),
           }))
         : [],
       wastePercent: stringValue(data.printing?.wastePercent),
+      electricityCostPerBox: stringValue(data.printing?.electricityCostPerBox),
       legacyManualCost: stringValue(data.printing?.legacyManualCost),
     },
     supplies: Array.isArray(data.supplies)
@@ -657,15 +818,38 @@ function normalizeVersionTwoState(data) {
       wastePercent: stringValue(data.adjustments?.wastePercent),
       warrantyPercent: stringValue(data.adjustments?.warrantyPercent),
     },
+    currencySettings: {
+      displayCurrency: CURRENCY.normalizeCurrency(data.currencySettings?.displayCurrency),
+      usdArsRate: stringValue(data.currencySettings?.usdArsRate),
+      rateUpdatedAt: stringValue(data.currencySettings?.rateUpdatedAt),
+    },
     monthlyCosts: Array.isArray(data.monthlyCosts)
       ? data.monthlyCosts.map((cost) => ({
           id: stringValue(cost.id) || makeId("monthly"),
           concept: stringValue(cost.concept),
           category: monthlyCategories.has(cost.category) ? cost.category : "Otros",
           amount: stringValue(cost.amount),
+          currency: CURRENCY.normalizeCurrency(cost.currency),
           periodicity: periodicities.has(cost.periodicity)
             ? cost.periodicity
             : "monthly",
+        }))
+      : [],
+    purchaseItems: Array.isArray(data.purchaseItems)
+      ? data.purchaseItems.map((item) => ({
+          id: stringValue(item.id) || makeId("purchase"),
+          componentId: stringValue(item.componentId),
+          sourceType: ["hardware", "supplies", "packaging", "filament"].includes(item.sourceType)
+            ? item.sourceType
+            : stringValue(item.componentId) ? "hardware" : "",
+          sourceId: stringValue(item.sourceId || item.componentId),
+          sourceCategory: stringValue(item.sourceCategory),
+          name: stringValue(item.name),
+          quantity: stringValue(item.quantity),
+          unit: stringValue(item.unit),
+          unitPrice: stringValue(item.unitPrice),
+          currency: CURRENCY.normalizeCurrency(item.currency),
+          supplier: stringValue(item.supplier),
         }))
       : [],
     pricing: {
@@ -695,6 +879,573 @@ function normalizeComponents(components) {
         supplier: stringValue(component.supplier),
       }))
     : [];
+}
+
+function normalizeRecoveredComponent(component) {
+  const name = firstPresentValue([
+    component?.name,
+    component?.nombre,
+    component?.component,
+    component?.componente,
+  ]);
+  const quantity = firstPresentValue([
+    component?.quantity,
+    component?.cantidad,
+    component?.qty,
+  ]);
+  const unitPrice = firstPresentValue([
+    component?.unitPrice,
+    component?.precioUnitario,
+    component?.unit_price,
+    component?.price,
+    component?.precio,
+  ]);
+  const supplier = firstPresentValue([
+    component?.supplier,
+    component?.proveedor,
+    component?.provider,
+  ]);
+
+  return {
+    id: rawStringValue(component?.id) || makeId("component"),
+    name: rawStringValue(name),
+    quantity: rawStringValue(quantity),
+    unitPrice: rawStringValue(unitPrice),
+    supplier: rawStringValue(supplier),
+  };
+}
+
+function hasRecoverableComponentShape(component) {
+  if (!component || typeof component !== "object") {
+    return false;
+  }
+
+  const recovered = normalizeRecoveredComponent(component);
+
+  return recovered.name.trim() !== "";
+}
+
+function extractComponentsFromStoredValue(parsedValue) {
+  const data = parsedValue?.data ?? parsedValue;
+  const candidateArrays = [
+    Array.isArray(data) ? data : null,
+    data?.components,
+    data?.hardware,
+    data?.hardwareComponents,
+    data?.componentes,
+    parsedValue?.components,
+    parsedValue?.data?.components,
+  ];
+  const array = candidateArrays.find(
+    (candidate) =>
+      Array.isArray(candidate) && candidate.some(hasRecoverableComponentShape),
+  );
+
+  if (!array) {
+    return [];
+  }
+
+  return array
+    .filter(hasRecoverableComponentShape)
+    .map(normalizeRecoveredComponent);
+}
+
+function componentIdentity(component) {
+  if (component.id) {
+    return `id:${component.id}`;
+  }
+
+  return `fields:${componentFingerprint(component)}`;
+}
+
+function componentFingerprint(component) {
+  return [
+    rawStringValue(component.name).trim().toLowerCase(),
+    rawStringValue(component.quantity),
+    rawStringValue(component.unitPrice),
+    rawStringValue(component.supplier),
+  ].join("|");
+}
+
+function recordFingerprint(record, fields) {
+  return fields
+    .map((field) => rawStringValue(record?.[field]).trim().toLowerCase())
+    .join("|");
+}
+
+function findRawMonthlyCost(rawCosts, normalizedCost) {
+  const costs = Array.isArray(rawCosts) ? rawCosts : [];
+  const byId = normalizedCost.id
+    ? costs.find((cost) => stringValue(cost.id) === normalizedCost.id)
+    : null;
+
+  if (byId) {
+    return byId;
+  }
+
+  return costs.find((cost) =>
+    ["concept", "category", "amount", "periodicity"].every(
+      (field) => stringValue(cost[field]) === stringValue(normalizedCost[field]),
+    ),
+  );
+}
+
+function isBlankValue(value) {
+  return value === undefined || value === null || rawStringValue(value).trim() === "";
+}
+
+function choosePresentValue(primary, secondary) {
+  return isBlankValue(primary) && !isBlankValue(secondary) ? secondary : primary;
+}
+
+function mergeRecord(primary, secondary, fields) {
+  const merged = { ...primary };
+  let changed = false;
+
+  fields.forEach((field) => {
+    const nextValue = choosePresentValue(merged[field], secondary?.[field]);
+
+    if (nextValue !== merged[field]) {
+      merged[field] = nextValue;
+      changed = true;
+    }
+  });
+
+  return { changed, record: merged };
+}
+
+function mergeRecordList(primaryList, secondaryList, options) {
+  const { identityFields, mergeFields } = options;
+  const list = primaryList.map((item) => ({ ...item }));
+  const indexById = new Map();
+  const indexByFingerprint = new Map();
+  const report = {
+    added: 0,
+    merged: 0,
+  };
+
+  list.forEach((item, index) => {
+    if (item.id) {
+      indexById.set(item.id, index);
+    }
+
+    indexByFingerprint.set(recordFingerprint(item, identityFields), index);
+  });
+
+  secondaryList.forEach((item) => {
+    const fingerprint = recordFingerprint(item, identityFields);
+    const index = item.id && indexById.has(item.id)
+      ? indexById.get(item.id)
+      : indexByFingerprint.get(fingerprint);
+
+    if (index === undefined) {
+      list.push({ ...item });
+      const newIndex = list.length - 1;
+
+      if (item.id) {
+        indexById.set(item.id, newIndex);
+      }
+
+      indexByFingerprint.set(fingerprint, newIndex);
+      report.added += 1;
+      return;
+    }
+
+    const merged = mergeRecord(list[index], item, mergeFields);
+
+    if (merged.changed) {
+      list[index] = merged.record;
+      report.merged += 1;
+    }
+  });
+
+  return {
+    list,
+    report,
+    changed: report.added > 0 || report.merged > 0,
+  };
+}
+
+function mergeObjectFields(primary, secondary, fields) {
+  const merged = { ...primary };
+  let changed = false;
+
+  fields.forEach((field) => {
+    const nextValue = choosePresentValue(merged[field], secondary?.[field]);
+
+    if (nextValue !== merged[field]) {
+      merged[field] = nextValue;
+      changed = true;
+    }
+  });
+
+  return { changed, object: merged };
+}
+
+function mergeStatesWithoutDataLoss(primaryState, secondaryState) {
+  const primary = normalizeVersionTwoState(primaryState);
+
+  if (!secondaryState) {
+    return {
+      changed: false,
+      state: primary,
+      report: {},
+    };
+  }
+
+  const secondary = normalizeVersionTwoState(secondaryState);
+  const merged = normalizeVersionTwoState(primary);
+  const report = {};
+  let changed = false;
+  const rawPrimary = primaryState?.data ?? primaryState;
+  const rawSecondary = secondaryState?.data ?? secondaryState;
+
+  const components = mergeRecordList(merged.components, secondary.components, {
+    identityFields: ["name", "quantity", "unitPrice", "supplier"],
+    mergeFields: ["id", "name", "quantity", "unitPrice", "supplier"],
+  });
+  merged.components = components.list;
+  report.components = components.report;
+  changed = changed || components.changed;
+
+  const printingPieces = mergeRecordList(merged.printing.pieces, secondary.printing.pieces, {
+    identityFields: ["name", "quantity", "weightGrams"],
+    mergeFields: ["id", "name", "quantity", "weightGrams", "printHours"],
+  });
+  merged.printing.pieces = printingPieces.list;
+  report.printingPieces = printingPieces.report;
+  changed = changed || printingPieces.changed;
+
+  const supplies = mergeRecordList(merged.supplies, secondary.supplies, {
+    identityFields: ["name", "quantity", "unit", "unitPrice", "supplier"],
+    mergeFields: ["id", "name", "quantity", "unit", "unitPrice", "supplier"],
+  });
+  merged.supplies = supplies.list;
+  report.supplies = supplies.report;
+  changed = changed || supplies.changed;
+
+  const labor = mergeRecordList(merged.labor, secondary.labor, {
+    identityFields: ["name", "hours", "hourlyRate", "responsible"],
+    mergeFields: ["id", "name", "hours", "hourlyRate", "responsible"],
+  });
+  merged.labor = labor.list;
+  report.labor = labor.report;
+  changed = changed || labor.changed;
+
+  const packaging = mergeRecordList(merged.packaging, secondary.packaging, {
+    identityFields: ["name", "quantity", "unitPrice", "supplier"],
+    mergeFields: ["id", "name", "quantity", "unitPrice", "supplier"],
+  });
+  merged.packaging = packaging.list;
+  report.packaging = packaging.report;
+  changed = changed || packaging.changed;
+
+  const monthlyCosts = mergeRecordList(merged.monthlyCosts, secondary.monthlyCosts, {
+    identityFields: ["concept", "category", "amount", "currency", "periodicity"],
+    mergeFields: ["id", "concept", "category", "amount", "currency", "periodicity"],
+  });
+  let keptExistingMonthlyCurrency = false;
+  monthlyCosts.list.forEach((cost) => {
+    const originalCost = findRawMonthlyCost(rawPrimary?.monthlyCosts, cost);
+    const secondaryCost = findRawMonthlyCost(rawSecondary?.monthlyCosts, cost);
+
+    if (
+      originalCost
+      && !Object.prototype.hasOwnProperty.call(originalCost, "currency")
+      && secondaryCost
+      && CURRENCY.normalizeCurrency(secondaryCost.currency) !== "ARS"
+    ) {
+      cost.currency = CURRENCY.normalizeCurrency(secondaryCost.currency);
+      keptExistingMonthlyCurrency = true;
+    }
+  });
+  merged.monthlyCosts = monthlyCosts.list;
+  report.monthlyCosts = monthlyCosts.report;
+  changed = changed || monthlyCosts.changed || keptExistingMonthlyCurrency;
+
+  const purchaseItems = mergeRecordList(merged.purchaseItems, secondary.purchaseItems, {
+    identityFields: ["sourceType", "sourceId", "name", "quantity", "unitPrice", "currency"],
+    mergeFields: ["id", "componentId", "sourceType", "sourceId", "sourceCategory", "name", "quantity", "unit", "unitPrice", "currency", "supplier"],
+  });
+  merged.purchaseItems = purchaseItems.list;
+  report.purchaseItems = purchaseItems.report;
+  changed = changed || purchaseItems.changed;
+
+  const filament = mergeObjectFields(merged.printing.filament, secondary.printing.filament, [
+    "name",
+    "spoolPrice",
+    "spoolWeightGrams",
+  ]);
+  merged.printing.filament = filament.object;
+  changed = changed || filament.changed;
+
+  const printing = mergeObjectFields(merged.printing, secondary.printing, [
+    "wastePercent",
+    "electricityCostPerBox",
+    "legacyManualCost",
+  ]);
+  merged.printing = {
+    ...printing.object,
+    filament: merged.printing.filament,
+    pieces: merged.printing.pieces,
+  };
+  changed = changed || printing.changed;
+
+  const adjustments = mergeObjectFields(merged.adjustments, secondary.adjustments, [
+    "wastePercent",
+    "warrantyPercent",
+  ]);
+  merged.adjustments = adjustments.object;
+  changed = changed || adjustments.changed;
+
+  const pricing = mergeObjectFields(merged.pricing, secondary.pricing, [
+    "manualPrice",
+    "targetMarkupPercent",
+    "targetMarginPercent",
+  ]);
+  merged.pricing = pricing.object;
+  if (isBlankValue(primary.pricing?.mode) && !isBlankValue(secondary.pricing?.mode)) {
+    merged.pricing.mode = secondary.pricing.mode;
+    changed = true;
+  }
+  changed = changed || pricing.changed;
+
+  if (!positiveQuantity(merged.simulator.quantity) && positiveQuantity(secondary.simulator.quantity)) {
+    merged.simulator.quantity = secondary.simulator.quantity;
+    changed = true;
+  }
+
+  const legacyCosts = mergeObjectFields(merged.legacyCosts, secondary.legacyCosts, [
+    "caseCost",
+    "laborCost",
+    "otherCost",
+  ]);
+  merged.legacyCosts = legacyCosts.object;
+  changed = changed || legacyCosts.changed;
+
+  if (!rawPrimary?.currencySettings && rawSecondary?.currencySettings) {
+    merged.currencySettings = secondary.currencySettings;
+    changed = true;
+  } else {
+    const currencySettings = mergeObjectFields(
+      merged.currencySettings,
+      secondary.currencySettings,
+      ["displayCurrency", "usdArsRate", "rateUpdatedAt"],
+    );
+    merged.currencySettings = currencySettings.object;
+    changed = changed || currencySettings.changed;
+  }
+
+  return {
+    changed,
+    state: merged,
+    report,
+  };
+}
+
+function stateNeedsCloudMigration(rawState) {
+  const data = rawState?.data ?? rawState;
+
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+
+  if (!isVersionTwoState(data)) {
+    return true;
+  }
+
+  return data.version !== CURRENT_VERSION
+    || !data.currencySettings
+    || !Array.isArray(data.purchaseItems)
+    || (Array.isArray(data.monthlyCosts)
+      && data.monthlyCosts.some((cost) => !Object.prototype.hasOwnProperty.call(cost, "currency")))
+    || (Array.isArray(data.printing?.pieces)
+      && data.printing.pieces.some((piece) => !Object.prototype.hasOwnProperty.call(piece, "printHours")));
+}
+
+function preserveCloudMergeBackup(localRawState, cloudRawState, report) {
+  if (!localRawState && !cloudRawState) {
+    return;
+  }
+
+  const existingBackup = parseJsonForRecovery(readLocalStorage(CLOUD_MERGE_BACKUP_KEY));
+  const backup = existingBackup && typeof existingBackup === "object"
+    ? existingBackup
+    : {
+        type: "green-box-cloud-merge-backup",
+        version: 1,
+        sources: [],
+      };
+  const sourceId = `${rawHash(localRawState)}:${rawHash(cloudRawState)}`;
+  const existingHashes = new Set(
+    Array.isArray(backup.sources)
+      ? backup.sources.map((source) => source.sourceId)
+      : [],
+  );
+
+  if (!Array.isArray(backup.sources)) {
+    backup.sources = [];
+  }
+
+  if (existingHashes.has(sourceId)) {
+    return;
+  }
+
+  backup.sources.push({
+    sourceId,
+    capturedAt: new Date().toISOString(),
+    report,
+    localRawState,
+    cloudRawState,
+  });
+  writeLocalStorage(CLOUD_MERGE_BACKUP_KEY, JSON.stringify(backup));
+}
+
+function rawHash(value) {
+  let hash = 0;
+  const text = rawStringValue(value);
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+
+  return hash.toString(16);
+}
+
+function findHardwareRecoveryCandidates() {
+  const discoveredKeys = listLocalStorageKeys();
+  const priorityKeys = [LEGACY_BACKUP_KEY, STORAGE_KEY, HARDWARE_RECOVERY_BACKUP_KEY];
+  const orderedKeys = [
+    ...priorityKeys.filter((key) => discoveredKeys.includes(key)),
+    ...discoveredKeys.filter((key) => !priorityKeys.includes(key)),
+  ];
+
+  logStorageInfo("Claves de almacenamiento encontradas:", discoveredKeys);
+
+  const candidates = orderedKeys
+    .map((key) => {
+      const raw = readLocalStorage(key);
+      const parsed = parseJsonForRecovery(raw);
+      const components = extractComponentsFromStoredValue(parsed);
+
+      return {
+        key,
+        raw,
+        rawHash: rawHash(raw),
+        components,
+      };
+    })
+    .filter((candidate) => candidate.components.length > 0);
+
+  if (candidates.length === 0) {
+    logStorageInfo("No se encontraron datos antiguos de hardware recuperables.");
+  } else {
+    logStorageInfo(
+      "Fuentes con hardware recuperable:",
+      candidates.map((candidate) => ({
+        key: candidate.key,
+        components: candidate.components.length,
+      })),
+    );
+  }
+
+  return candidates;
+}
+
+function preserveHardwareRecoveryBackup(candidates) {
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const existingBackup = parseJsonForRecovery(readLocalStorage(HARDWARE_RECOVERY_BACKUP_KEY));
+  const backup = existingBackup && typeof existingBackup === "object"
+    ? existingBackup
+    : {
+        type: "green-box-hardware-recovery-backup",
+        version: 1,
+        sources: [],
+      };
+  const existingHashes = new Set(
+    Array.isArray(backup.sources)
+      ? backup.sources.map((source) => `${source.key}:${source.rawHash}`)
+      : [],
+  );
+
+  if (!Array.isArray(backup.sources)) {
+    backup.sources = [];
+  }
+
+  candidates.forEach((candidate) => {
+    const sourceId = `${candidate.key}:${candidate.rawHash}`;
+
+    if (existingHashes.has(sourceId)) {
+      return;
+    }
+
+    backup.sources.push({
+      key: candidate.key,
+      rawHash: candidate.rawHash,
+      componentCount: candidate.components.length,
+      capturedAt: new Date().toISOString(),
+      rawValue: candidate.raw,
+    });
+    existingHashes.add(sourceId);
+  });
+
+  writeLocalStorage(HARDWARE_RECOVERY_BACKUP_KEY, JSON.stringify(backup));
+}
+
+function recoverStoredHardware(normalizedState) {
+  const candidates = findHardwareRecoveryCandidates();
+  const existingIds = new Set(
+    normalizedState.components
+      .map((component) => component.id)
+      .filter(Boolean),
+  );
+  const existingFingerprints = new Set(
+    normalizedState.components.map(componentFingerprint),
+  );
+  const recoveredComponents = [];
+
+  candidates.forEach((candidate) => {
+    candidate.components.forEach((component) => {
+      const fingerprint = componentFingerprint(component);
+
+      if (
+        (component.id && existingIds.has(component.id)) ||
+        existingFingerprints.has(fingerprint)
+      ) {
+        return;
+      }
+
+      if (component.id) {
+        existingIds.add(component.id);
+      }
+
+      existingFingerprints.add(fingerprint);
+      recoveredComponents.push(component);
+    });
+  });
+
+  if (recoveredComponents.length === 0) {
+    logStorageInfo("No hubo migracion de hardware; no habia componentes nuevos para copiar.");
+    return {
+      recoveredCount: 0,
+      state: normalizedState,
+    };
+  }
+
+  preserveHardwareRecoveryBackup(candidates);
+  normalizedState.components = [...normalizedState.components, ...recoveredComponents];
+  logStorageInfo("Migracion de hardware ejecutada.", {
+    recoveredCount: recoveredComponents.length,
+    finalComponentCount: normalizedState.components.length,
+  });
+
+  return {
+    recoveredCount: recoveredComponents.length,
+    state: normalizedState,
+  };
 }
 
 function migrateLegacyState(data) {
@@ -755,12 +1506,22 @@ function loadState() {
   const savedState = parseJsonSafely(rawState, STORAGE_KEY);
 
   if (!savedState) {
+    const recovery = recoverStoredHardware(createDefaultState());
+
+    if (recovery.recoveredCount > 0) {
+      applyImportedState(recovery.state);
+      migrationNotice =
+        "Se recuperaron componentes de hardware desde datos guardados anteriormente.";
+      writeLocalStorage(STORAGE_KEY, JSON.stringify(state));
+    }
+
     return;
   }
 
   try {
-    const shouldMigrate = !isVersionTwoState(savedState);
+    const shouldMigrate = stateNeedsCloudMigration(savedState);
     const normalizedState = normalizeImportedState(savedState);
+    const recovery = recoverStoredHardware(normalizedState);
 
     if (shouldMigrate && rawState) {
       if (!readLocalStorage(LEGACY_BACKUP_KEY)) {
@@ -769,10 +1530,18 @@ function loadState() {
 
       migrationNotice =
         "Datos anteriores migrados a la estructura nueva. Se guardo una copia de respaldo local.";
-      writeLocalStorage(STORAGE_KEY, JSON.stringify(normalizedState));
     }
 
-    applyImportedState(normalizedState);
+    if (recovery.recoveredCount > 0) {
+      migrationNotice =
+        "Se recuperaron componentes de hardware desde datos guardados anteriormente.";
+    }
+
+    applyImportedState(recovery.state);
+
+    if (shouldMigrate || recovery.recoveredCount > 0) {
+      writeLocalStorage(STORAGE_KEY, JSON.stringify(state));
+    }
   } catch (error) {
     console.warn("No se pudo cargar el estado guardado.", error);
     setBackupStatus("No se pudo cargar el estado guardado. No se modifico localStorage.", true);
@@ -832,11 +1601,55 @@ async function connectCloudStorage() {
 
   try {
     const response = await apiRequest("/api/state");
-    const normalizedState = normalizeImportedState(response.data);
-    applyImportedState(normalizedState);
+    const cloudNeedsMigration = stateNeedsCloudMigration(response.data);
+    const localRawState = readLocalStorage(STORAGE_KEY);
+    const parsedLocalState = parseJsonSafely(localRawState, STORAGE_KEY);
+    let normalizedLocalState = null;
+
+    if (parsedLocalState) {
+      try {
+        normalizedLocalState = normalizeImportedState(parsedLocalState);
+      } catch (error) {
+        console.warn("No se pudo normalizar la copia local para fusionar con Neon.", error);
+      }
+    }
+
+    const merge = mergeStatesWithoutDataLoss(
+      response.data,
+      normalizedLocalState ? parsedLocalState : null,
+    );
+
+    if (merge.changed || cloudNeedsMigration) {
+      preserveCloudMergeBackup(
+        localRawState,
+        JSON.stringify(response.data || {}),
+        {
+          cloudNeedsMigration,
+          ...merge.report,
+        },
+      );
+      logStorageInfo("Fusion local/Neon preparada:", {
+        cloudNeedsMigration,
+        report: merge.report,
+      });
+    }
+
+    applyImportedState(merge.state);
     storageMode = "cloud";
     writeLocalStorage(STORAGE_KEY, JSON.stringify(state));
     render();
+
+    if (merge.changed || cloudNeedsMigration) {
+      setStorageStatus("Migrando a Neon...", "cloud");
+      await apiRequest("/api/state", {
+        method: "PUT",
+        body: JSON.stringify({ data: state }),
+      });
+      setStorageStatus("Conectado a Neon", "cloud");
+      setBackupStatus("Datos consolidados en Neon sin borrar la copia local.");
+      return;
+    }
+
     setStorageStatus("Conectado a Neon", "cloud");
     setBackupStatus("Datos cargados desde Neon.");
   } catch (error) {
@@ -1137,6 +1950,7 @@ function deleteComponent(id) {
     return;
   }
 
+  snapshotPurchaseSource("hardware", id);
   deleteListItem(state.components, id);
   saveAndRender();
 }
@@ -1150,9 +1964,31 @@ function clearComponents() {
     return;
   }
 
+  state.components.forEach((component) => snapshotPurchaseSource("hardware", component.id));
   state.components = [];
   resetComponentForm();
   saveAndRender();
+}
+
+function snapshotPurchaseSource(sourceType, sourceId) {
+  const source = getPurchaseCatalog().find(
+    (item) => item.sourceType === sourceType && item.sourceId === sourceId,
+  );
+
+  if (!source) return;
+
+  state.purchaseItems.forEach((item) => {
+    const itemType = item.sourceType || (item.componentId ? "hardware" : "");
+    const itemSourceId = item.sourceId || item.componentId;
+    if (itemType !== sourceType || itemSourceId !== sourceId) return;
+
+    item.sourceCategory = source.sourceCategory;
+    item.name = source.name;
+    item.unit = source.unit;
+    item.unitPrice = source.unitPrice;
+    item.currency = source.currency;
+    item.supplier = source.supplier;
+  });
 }
 
 function resetComponentForm() {
@@ -1183,6 +2019,10 @@ function upsertPrintingPiece(event) {
       min: 0,
       exclusiveMin: true,
     }),
+    validateNumber(elements.printingPieceHours.value, {
+      label: "Las horas de impresion",
+      min: 0,
+    }),
   ]);
 
   if (error) {
@@ -1195,6 +2035,7 @@ function upsertPrintingPiece(event) {
     name: stringValue(elements.printingPieceName.value),
     quantity: stringValue(elements.printingPieceQty.value),
     weightGrams: stringValue(elements.printingPieceWeight.value),
+    printHours: stringValue(elements.printingPieceHours.value),
   });
 
   resetPrintingPieceForm();
@@ -1212,6 +2053,7 @@ function editPrintingPiece(id) {
   elements.printingPieceName.value = piece.name;
   elements.printingPieceQty.value = piece.quantity;
   elements.printingPieceWeight.value = piece.weightGrams;
+  elements.printingPieceHours.value = piece.printHours;
   elements.savePrintingPieceBtn.textContent = "Guardar cambios";
   elements.cancelPrintingPieceEditBtn.classList.remove("hidden");
   setFormMessage(elements.printingPieceFormMessage, "", false);
@@ -1232,6 +2074,7 @@ function resetPrintingPieceForm() {
   elements.printingPieceName.value = "";
   elements.printingPieceQty.value = "";
   elements.printingPieceWeight.value = "";
+  elements.printingPieceHours.value = "";
   elements.savePrintingPieceBtn.textContent = "Agregar pieza";
   elements.cancelPrintingPieceEditBtn.classList.add("hidden");
   setFormMessage(elements.printingPieceFormMessage, "", false);
@@ -1299,6 +2142,7 @@ function deleteSupply(id) {
     return;
   }
 
+  snapshotPurchaseSource("supplies", id);
   deleteListItem(state.supplies, id);
   saveAndRender();
 }
@@ -1446,6 +2290,7 @@ function deletePackaging(id) {
     return;
   }
 
+  snapshotPurchaseSource("packaging", id);
   deleteListItem(state.packaging, id);
   saveAndRender();
 }
@@ -1485,6 +2330,7 @@ function upsertMonthlyCost(event) {
       ? elements.monthlyCategory.value
       : "Otros",
     amount: stringValue(elements.monthlyAmount.value),
+    currency: CURRENCY.normalizeCurrency(elements.monthlyCurrency.value),
     periodicity: PERIODICITIES.includes(elements.monthlyPeriodicity.value)
       ? elements.monthlyPeriodicity.value
       : "monthly",
@@ -1506,6 +2352,7 @@ function editMonthlyCost(id) {
   elements.monthlyCategory.value = cost.category;
   elements.monthlyPeriodicity.value = cost.periodicity;
   elements.monthlyAmount.value = cost.amount;
+  elements.monthlyCurrency.value = cost.currency;
   elements.saveMonthlyCostBtn.textContent = "Guardar cambios";
   elements.cancelMonthlyCostEditBtn.classList.remove("hidden");
   setFormMessage(elements.monthlyCostFormMessage, "", false);
@@ -1527,9 +2374,117 @@ function resetMonthlyCostForm() {
   elements.monthlyCategory.value = "Infraestructura";
   elements.monthlyPeriodicity.value = "monthly";
   elements.monthlyAmount.value = "";
+  elements.monthlyCurrency.value = "ARS";
   elements.saveMonthlyCostBtn.textContent = "Agregar costo";
   elements.cancelMonthlyCostEditBtn.classList.add("hidden");
   setFormMessage(elements.monthlyCostFormMessage, "", false);
+}
+
+function upsertPurchaseItem(event) {
+  event.preventDefault();
+
+  const sourceKey = stringValue(elements.purchaseSourceSelect.value);
+  const source = getPurchaseCatalog().find((item) => item.key === sourceKey);
+  const quantity = stringValue(elements.purchaseItemQuantity.value);
+  const duplicateSource = state.purchaseItems.some((item) =>
+    (item.sourceType || (item.componentId ? "hardware" : "")) === source?.sourceType
+      && (item.sourceId || item.componentId) === source?.sourceId
+      && item.id !== elements.purchaseItemId.value,
+  );
+  const error = firstValidationError([
+    source ? "" : "Elegí un elemento existente del catálogo.",
+    duplicateSource ? "Este elemento ya está en la lista. Editá la fila existente para cambiar la cantidad." : "",
+    validateNumber(quantity, {
+      label: "La cantidad",
+      required: true,
+      min: 0,
+      exclusiveMin: true,
+    }),
+    !CURRENCY.parseDecimal(quantity) ? "La cantidad debe ser un decimal válido." : "",
+    source
+      ? validateNumber(source.unitPrice, {
+          label: "El precio del componente",
+          required: true,
+          min: 0,
+        })
+      : "",
+    source && !CURRENCY.parseDecimal(source.unitPrice)
+      ? "El elemento no tiene un precio válido. Actualizalo en su catálogo."
+      : "",
+  ]);
+
+  if (error) {
+    setFormMessage(elements.purchaseItemFormMessage, error);
+    return;
+  }
+
+  upsertListItem(state.purchaseItems, {
+    id: elements.purchaseItemId.value || makeId("purchase"),
+    componentId: source.sourceType === "hardware" ? source.sourceId : "",
+    sourceType: source.sourceType,
+    sourceId: source.sourceId,
+    sourceCategory: source.sourceCategory,
+    name: source.name,
+    quantity,
+    unit: source.unit,
+    unitPrice: stringValue(source.unitPrice),
+    currency: source.currency,
+    supplier: stringValue(source.supplier),
+  });
+
+  resetPurchaseItemForm();
+  saveAndRender();
+}
+
+function editPurchaseItem(id) {
+  const item = state.purchaseItems.find((entry) => entry.id === id);
+
+  if (!item) {
+    return;
+  }
+
+  elements.purchaseItemId.value = item.id;
+  renderPurchaseSourceOptions();
+  const sourceType = item.sourceType || (item.componentId ? "hardware" : "");
+  const sourceId = item.sourceId || item.componentId;
+  const source = getPurchaseCatalog().find(
+    (entry) => entry.sourceType === sourceType && entry.sourceId === sourceId,
+  );
+  elements.purchaseSourceSelect.value = source?.key || "";
+  elements.purchaseItemQuantity.value = item.quantity;
+  renderPurchaseSourceDetails();
+  elements.savePurchaseItemBtn.textContent = "Guardar cambios";
+  elements.cancelPurchaseItemEditBtn.classList.remove("hidden");
+  setFormMessage(
+    elements.purchaseItemFormMessage,
+    sourceType && !source
+      ? `El elemento original ya no está en ${item.sourceCategory || purchaseSourceCategory(sourceType)}. Elegí uno disponible para actualizar esta compra.`
+      : !sourceType
+        ? "Este registro anterior no está vinculado a un catálogo. Elegí un elemento para reemplazarlo."
+        : "",
+    Boolean(!source),
+  );
+  elements.purchaseSourceSelect.focus();
+}
+
+function deletePurchaseItem(id) {
+  if (!window.confirm("¿Seguro que querés eliminar esta compra de la lista?")) {
+    return;
+  }
+
+  deleteListItem(state.purchaseItems, id);
+  saveAndRender();
+}
+
+function resetPurchaseItemForm() {
+  elements.purchaseItemId.value = "";
+  elements.purchaseSourceSelect.value = "";
+  elements.purchaseItemQuantity.value = "";
+  renderPurchaseSourceOptions();
+  renderPurchaseSourceDetails();
+  elements.savePurchaseItemBtn.textContent = "Agregar compra";
+  elements.cancelPurchaseItemEditBtn.classList.add("hidden");
+  setFormMessage(elements.purchaseItemFormMessage, "", false);
 }
 
 function resetAllForms() {
@@ -1539,6 +2494,7 @@ function resetAllForms() {
   resetLaborForm();
   resetPackagingForm();
   resetMonthlyCostForm();
+  resetPurchaseItemForm();
   setFormMessage(elements.printingConfigMessage, "", false);
   setFormMessage(elements.adjustmentsMessage, "", false);
   setFormMessage(elements.pricingMessage, "", false);
@@ -1550,7 +2506,43 @@ function saveAndRender() {
   render();
 }
 
+function saveCurrencySettings(event) {
+  event.preventDefault();
+
+  const rate = stringValue(elements.usdArsRate.value);
+  const parsedRate = CURRENCY.parseDecimal(rate);
+  const error = firstValidationError([
+    validateNumber(rate, {
+      label: "El tipo de cambio",
+      min: 0,
+      exclusiveMin: true,
+    }),
+    rate && !elements.rateUpdatedAt.value
+      ? "Indicá la fecha de actualización del tipo de cambio."
+      : "",
+    rate && (!parsedRate || parsedRate.coefficient <= 0n)
+      ? "El tipo de cambio debe ser un decimal positivo válido."
+      : "",
+  ]);
+
+  if (error) {
+    setFormMessage(elements.currencySettingsMessage, error);
+    return;
+  }
+
+  state.currencySettings = {
+    displayCurrency: CURRENCY.normalizeCurrency(elements.displayCurrency.value),
+    usdArsRate: rate,
+    rateUpdatedAt: rate ? stringValue(elements.rateUpdatedAt.value) : "",
+  };
+  setFormMessage(elements.currencySettingsMessage, "Configuración guardada.", false);
+  saveAndRender();
+}
+
 function updateFilamentField(field, value) {
+  if (field === "name" && !stringValue(value).trim()) {
+    snapshotPurchaseSource("filament", "filament");
+  }
   state.printing.filament[field] = stringValue(value);
   saveAndRender();
 }
@@ -1568,6 +2560,22 @@ function updatePrintingWaste(value) {
   }
 
   state.printing.wastePercent = stringValue(value);
+  setFormMessage(elements.printingConfigMessage, "", false);
+  saveAndRender();
+}
+
+function updatePrintingElectricityCost(value) {
+  const error = validateNumber(value, {
+    label: "El costo de luz por box",
+    min: 0,
+  });
+
+  if (error) {
+    setFormMessage(elements.printingConfigMessage, error);
+    return;
+  }
+
+  state.printing.electricityCostPerBox = stringValue(value);
   setFormMessage(elements.printingConfigMessage, "", false);
   saveAndRender();
 }
@@ -1646,6 +2654,7 @@ function render() {
   renderPricing(summary);
   renderSimulator(summary);
   renderBreakEven(summary);
+  renderCurrencyStatus();
   renderMigrationStatus();
 }
 
@@ -1654,12 +2663,16 @@ function syncInputs() {
   elements.filamentSpoolPrice.value = state.printing.filament.spoolPrice;
   elements.filamentSpoolWeight.value = state.printing.filament.spoolWeightGrams;
   elements.printingWastePercent.value = state.printing.wastePercent;
+  elements.printingElectricityCostInput.value = state.printing.electricityCostPerBox;
   elements.generalWastePercent.value = state.adjustments.wastePercent;
   elements.warrantyPercent.value = state.adjustments.warrantyPercent;
   elements.manualSalePrice.value = state.pricing.manualPrice;
   elements.targetMarkupPercent.value = state.pricing.targetMarkupPercent;
   elements.targetMarginPercent.value = state.pricing.targetMarginPercent;
   elements.productionQty.value = state.simulator.quantity;
+  elements.displayCurrency.value = state.currencySettings.displayCurrency;
+  elements.usdArsRate.value = state.currencySettings.usdArsRate;
+  elements.rateUpdatedAt.value = state.currencySettings.rateUpdatedAt;
 
   elements.pricingModeInputs.forEach((input) => {
     input.checked = input.value === state.pricing.mode;
@@ -1677,6 +2690,7 @@ function renderTables(summary) {
   renderLabor();
   renderPackaging();
   renderMonthlyCosts();
+  renderPurchaseItems();
 }
 
 function renderComponents() {
@@ -1710,7 +2724,7 @@ function renderComponents() {
 function renderPrintingPieces(summary) {
   if (state.printing.pieces.length === 0) {
     elements.printingPiecesTableBody.innerHTML =
-      '<tr><td colspan="6" class="empty-row">Sin piezas cargadas.</td></tr>';
+      '<tr><td colspan="7" class="empty-row">Sin piezas cargadas.</td></tr>';
     return;
   }
 
@@ -1729,6 +2743,7 @@ function renderPrintingPieces(summary) {
           <td>${formatQuantity(positiveQuantity(piece.quantity))}</td>
           <td>${formatQuantity(positiveQuantity(piece.weightGrams), "g")}</td>
           <td>${formatQuantity(calculated.totalGrams, "g")}</td>
+          <td>${piece.printHours === "" ? "-" : formatQuantity(nonNegativeNumber(piece.printHours), "h")}</td>
           <td><strong>${formatMoney(calculated.baseCost)}</strong></td>
           <td>
             <div class="row-actions">
@@ -1841,8 +2856,15 @@ function renderMonthlyCosts() {
           <td><div class="record-name">${escapeHtml(cost.concept)}</div></td>
           <td>${escapeHtml(cost.category)}</td>
           <td>${formatPeriodicity(cost.periodicity)}</td>
-          <td>${formatMoney(nonNegativeNumber(cost.amount))}</td>
-          <td><strong>${formatMoney(calculateMonthlyEquivalent(cost))}</strong></td>
+          <td>${formatMoneyOriginal(cost.amount, cost.currency)}</td>
+          <td><strong>${formatMoneyMinorUnits(
+            CURRENCY.monthlyEquivalentMinorUnits(
+              cost,
+              state.currencySettings.displayCurrency,
+              state.currencySettings.usdArsRate,
+            ),
+            state.currencySettings.displayCurrency,
+          )}</strong></td>
           <td>
             <div class="row-actions">
               <button class="icon-button" type="button" data-action="edit-monthly-cost" data-id="${escapeAttribute(cost.id)}">Editar</button>
@@ -1855,6 +2877,233 @@ function renderMonthlyCosts() {
     .join("");
 }
 
+function purchaseSourceCategory(sourceType) {
+  return {
+    hardware: "Hardware",
+    supplies: "Insumos",
+    packaging: "Packaging",
+    filament: "Impresión 3D",
+  }[sourceType] || "catálogo";
+}
+
+function getPurchaseCatalog() {
+  const sources = [
+    ...state.components.map((item) => ({
+      sourceType: "hardware",
+      sourceId: item.id,
+      sourceCategory: "Hardware",
+      name: item.name,
+      unit: "unidad",
+      unitPrice: item.unitPrice,
+      currency: "ARS",
+      supplier: item.supplier,
+    })),
+    ...state.supplies.map((item) => ({
+      sourceType: "supplies",
+      sourceId: item.id,
+      sourceCategory: "Insumos",
+      name: item.name,
+      unit: item.unit || "unidad",
+      unitPrice: item.unitPrice,
+      currency: "ARS",
+      supplier: item.supplier,
+    })),
+    ...state.packaging.map((item) => ({
+      sourceType: "packaging",
+      sourceId: item.id,
+      sourceCategory: "Packaging",
+      name: item.name,
+      unit: "unidad",
+      unitPrice: item.unitPrice,
+      currency: "ARS",
+      supplier: item.supplier,
+    })),
+  ];
+
+  if (stringValue(state.printing.filament.name).trim()) {
+    sources.push({
+      sourceType: "filament",
+      sourceId: "filament",
+      sourceCategory: "Impresión 3D",
+      name: state.printing.filament.name,
+      unit: "rollo",
+      unitPrice: state.printing.filament.spoolPrice,
+      currency: "ARS",
+      supplier: "",
+    });
+  }
+
+  return sources.map((source) => ({
+    ...source,
+    key: JSON.stringify([source.sourceType, source.sourceId]),
+  }));
+}
+
+function resolvePurchaseItem(item) {
+  const sourceType = item.sourceType || (item.componentId ? "hardware" : "");
+  const sourceId = item.sourceId || item.componentId;
+  const source = getPurchaseCatalog().find(
+    (entry) => entry.sourceType === sourceType && entry.sourceId === sourceId,
+  );
+
+  return source
+    ? { ...item, ...source, sourceAvailable: true }
+    : {
+        ...item,
+        sourceType,
+        sourceCategory: item.sourceCategory || purchaseSourceCategory(sourceType),
+        name: item.name || "Elemento sin nombre",
+        currency: CURRENCY.normalizeCurrency(item.currency),
+        supplier: item.supplier || "",
+        sourceAvailable: false,
+      };
+}
+
+function renderPurchaseSourceOptions() {
+  const sources = getPurchaseCatalog();
+  const selectedKey = stringValue(elements.purchaseSourceSelect.value);
+  const editingItem = state.purchaseItems.find(
+    (item) => item.id === elements.purchaseItemId.value,
+  );
+  const itemType = editingItem?.sourceType || (editingItem?.componentId ? "hardware" : "");
+  const itemSourceId = editingItem?.sourceId || editingItem?.componentId;
+  const previousSelection = selectedKey || (editingItem && sources.find(
+    (source) => source.sourceType === itemType && source.sourceId === itemSourceId,
+  )?.key) || "";
+  const missingSource = editingItem && itemType && !sources.some(
+    (source) => source.sourceType === itemType && source.sourceId === itemSourceId,
+  );
+  const placeholder = sources.length > 0
+    ? "Seleccioná un elemento"
+    : "Primero cargá elementos en un catálogo";
+  const missingOption = missingSource
+    ? `<option value="" disabled>${escapeHtml(editingItem.name || "Elemento")}
+      (ya no está en ${escapeHtml(editingItem.sourceCategory || purchaseSourceCategory(itemType))})</option>`
+    : "";
+  const groups = ["hardware", "supplies", "packaging", "filament"]
+    .map((sourceType) => {
+      const options = sources
+        .filter((source) => source.sourceType === sourceType)
+        .map((source) => {
+          const name = source.name || "Elemento sin nombre";
+          const unit = source.unit ? ` / ${source.unit}` : "";
+          return `<option value="${escapeAttribute(source.key)}">${escapeHtml(name)} — ${formatMoneyOriginal(source.unitPrice, source.currency)}${escapeHtml(unit)}</option>`;
+        })
+        .join("");
+      return options
+        ? `<optgroup label="${purchaseSourceCategory(sourceType)}">${options}</optgroup>`
+        : "";
+    })
+    .join("");
+
+  elements.purchaseSourceSelect.innerHTML =
+    `<option value="">${placeholder}</option>${missingOption}${groups}`;
+  elements.purchaseSourceSelect.value = previousSelection;
+  if (elements.purchaseSourceSelect.value !== previousSelection) {
+    elements.purchaseSourceSelect.value = "";
+  }
+  elements.savePurchaseItemBtn.disabled = sources.length === 0;
+}
+
+function renderPurchaseSourceDetails() {
+  const source = getPurchaseCatalog().find(
+    (item) => item.key === elements.purchaseSourceSelect.value,
+  );
+
+  if (source) {
+    const supplier = source.supplier ? ` · Proveedor: ${source.supplier}` : "";
+    elements.purchaseSourceDetails.textContent =
+      `${source.sourceCategory} · Precio actual: ${formatMoneyOriginal(source.unitPrice, source.currency)} por ${source.unit}${supplier}. Se actualiza desde ese catálogo.`;
+    return;
+  }
+
+  const editingItem = state.purchaseItems.find(
+    (item) => item.id === elements.purchaseItemId.value,
+  );
+  if (editingItem && (editingItem.name || editingItem.unitPrice)) {
+    const snapshot = resolvePurchaseItem(editingItem);
+    elements.purchaseSourceDetails.textContent =
+      `Último dato guardado: ${snapshot.name} · ${formatMoneyOriginal(snapshot.unitPrice, snapshot.currency)}. Elegí un elemento de un catálogo para actualizar esta compra.`;
+    return;
+  }
+
+  elements.purchaseSourceDetails.textContent = getPurchaseCatalog().length > 0
+    ? "Elegí Hardware, Insumos, Packaging o el filamento cargado. El precio y proveedor se toman de su catálogo."
+    : "Primero cargá hardware, insumos, packaging o el filamento en sus secciones; después podés seleccionarlos acá.";
+}
+
+function renderPurchaseItems() {
+  renderPurchaseSourceOptions();
+  renderPurchaseSourceDetails();
+
+  const displayCurrency = state.currencySettings.displayCurrency;
+  elements.purchaseEquivalentHeading.textContent = `Equivalente (${displayCurrency})`;
+  elements.purchaseListTotalHeading.textContent = `Total estimado (${displayCurrency})`;
+
+  if (state.purchaseItems.length === 0) {
+    elements.purchaseItemsTableBody.innerHTML =
+      '<tr><td colspan="8" class="empty-row">Todavía no agregaste compras.</td></tr>';
+  } else {
+    elements.purchaseItemsTableBody.innerHTML = state.purchaseItems
+      .map((item) => {
+        const resolvedItem = resolvePurchaseItem(item);
+        const originalTotal = CURRENCY.purchaseItemOriginalTotalMinorUnits(resolvedItem);
+        const equivalentTotal = CURRENCY.purchaseItemTotalMinorUnits(
+          resolvedItem,
+          displayCurrency,
+          state.currencySettings.usdArsRate,
+        );
+        const hasSource = resolvedItem.sourceType && resolvedItem.sourceId;
+        const missingSourceNotice = hasSource && !resolvedItem.sourceAvailable
+          ? `<div class="muted-text">Ya no está en ${escapeHtml(resolvedItem.sourceCategory)}</div>`
+          : "";
+
+        return `
+          <tr>
+            <td><div class="record-name">${escapeHtml(resolvedItem.name)}</div>${missingSourceNotice}</td>
+            <td>${escapeHtml(resolvedItem.sourceCategory || "—")}</td>
+            <td>${escapeHtml(resolvedItem.supplier || "—")}</td>
+            <td>${formatPurchaseQuantity(item.quantity)}${resolvedItem.unit ? ` ${escapeHtml(resolvedItem.unit)}` : ""}</td>
+            <td>${formatMoneyOriginal(resolvedItem.unitPrice, resolvedItem.currency)}</td>
+            <td>${formatMoneyMinorUnits(originalTotal, resolvedItem.currency)}</td>
+            <td><strong>${formatMoneyMinorUnits(equivalentTotal, displayCurrency)}</strong></td>
+            <td>
+              <div class="row-actions">
+                <button class="icon-button" type="button" data-action="edit-purchase-item" data-id="${escapeAttribute(item.id)}">Editar</button>
+                <button class="icon-button danger" type="button" data-action="delete-purchase-item" data-id="${escapeAttribute(item.id)}">Borrar</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  const resolvedItems = state.purchaseItems.map(resolvePurchaseItem);
+  const totalMinorUnits = CURRENCY.sumPurchaseItemsMinorUnits(
+    resolvedItems,
+    displayCurrency,
+    state.currencySettings.usdArsRate,
+  );
+  elements.purchaseListTotal.textContent = formatMoneyMinorUnits(totalMinorUnits, displayCurrency);
+
+  const needsExchangeRate = resolvedItems.some(
+    (item) => CURRENCY.normalizeCurrency(item.currency) !== displayCurrency,
+  );
+  const rate = CURRENCY.parseDecimal(state.currencySettings.usdArsRate);
+  const missingExchangeRate = needsExchangeRate && (!rate || rate.coefficient <= 0n);
+
+  if (totalMinorUnits === null) {
+    elements.purchaseCurrencyStatus.textContent = missingExchangeRate
+      ? "Para convertir y sumar compras en monedas distintas, configurá el tipo de cambio en Negocio → Costos mensuales."
+      : "Revisá que todas las compras tengan una cantidad y un precio válidos para calcular el total.";
+    elements.purchaseCurrencyStatus.classList.remove("hidden");
+  } else {
+    elements.purchaseCurrencyStatus.textContent = "";
+    elements.purchaseCurrencyStatus.classList.add("hidden");
+  }
+}
+
 function renderSummary(summary) {
   const isLoss = summary.contributionPerUnit < 0;
 
@@ -1862,7 +3111,10 @@ function renderSummary(summary) {
   elements.summarySalePrice.textContent = formatMoney(summary.salePrice);
   elements.summaryProfit.textContent = formatMoney(summary.contributionPerUnit);
   elements.summaryMargin.textContent = formatPercent(summary.marginPercent);
-  elements.summaryFixedCosts.textContent = formatMoney(summary.monthlyFixedCosts);
+  elements.summaryFixedCosts.textContent = formatMoneyMinorUnits(
+    summary.monthlyFixedCostsDisplayMinorUnits,
+    state.currencySettings.displayCurrency,
+  );
   elements.summaryBreakEven.textContent = summary.breakEvenUnits
     ? `${summary.breakEvenUnits} unidades`
     : "No calculable";
@@ -1880,7 +3132,10 @@ function renderSummary(summary) {
   elements.laborHoursTotal.textContent = formatQuantity(summary.laborHoursTotal, "h");
   elements.laborTotal.textContent = formatMoney(summary.laborTotal);
   elements.packagingTotal.textContent = formatMoney(summary.packagingTotal);
-  elements.monthlyFixedCosts.textContent = formatMoney(summary.monthlyFixedCosts);
+  elements.monthlyFixedCosts.textContent = formatMoneyMinorUnits(
+    summary.monthlyFixedCostsDisplayMinorUnits,
+    state.currencySettings.displayCurrency,
+  );
   elements.directBaseCost.textContent = formatMoney(summary.directBaseCost);
   elements.variableUnitCost.textContent = formatMoney(summary.variableUnitCost);
 
@@ -1929,8 +3184,12 @@ function renderPrintingSummary(summary) {
     ? formatMoney(summary.filamentPricePerGram)
     : "Sin datos";
   elements.printingTotalGrams.textContent = formatQuantity(summary.printingTotalGrams, "g");
+  elements.printingTotalHours.textContent = formatQuantity(summary.printingTotalHours, "h");
   elements.printingBaseCost.textContent = formatMoney(summary.printingBaseCost);
   elements.printingWasteCost.textContent = formatMoney(summary.printingWasteCost);
+  elements.printingElectricityTotal.textContent = formatMoney(
+    summary.printingElectricityCostPerBox,
+  );
   elements.printingTotal.textContent = formatMoney(summary.printingTotal);
 }
 
@@ -1964,19 +3223,27 @@ function renderPricing(summary) {
 }
 
 function renderSimulator(summary) {
-  const isLoss = summary.estimatedResult < 0;
+  const isLoss = Number.isFinite(summary.estimatedResult) && summary.estimatedResult < 0;
 
   elements.simulatorUnits.textContent = formatQuantity(summary.simulatorQuantity);
   elements.requiredInvestment.textContent = formatMoney(summary.requiredInvestment);
   elements.simulatorVariableTotal.textContent = formatMoney(summary.simulatorVariableTotal);
   elements.estimatedRevenue.textContent = formatMoney(summary.estimatedRevenue);
   elements.estimatedContribution.textContent = formatMoney(summary.estimatedContribution);
-  elements.simulatorFixedCosts.textContent = formatMoney(summary.monthlyFixedCosts);
-  elements.estimatedProfit.textContent = isLoss
-    ? `Perdida: ${formatMoney(summary.estimatedResult)}`
-    : `Resultado positivo: ${formatMoney(summary.estimatedResult)}`;
+  elements.simulatorFixedCosts.textContent = formatMoneyMinorUnits(
+    summary.monthlyFixedCostsDisplayMinorUnits,
+    state.currencySettings.displayCurrency,
+  );
+  elements.estimatedProfit.textContent = summary.estimatedResult === null
+    ? "Configurar USD/ARS"
+    : isLoss
+      ? `Perdida: ${formatMoney(summary.estimatedResult)}`
+      : `Resultado positivo: ${formatMoney(summary.estimatedResult)}`;
   elements.estimatedProfit.classList.toggle("negative-text", isLoss);
-  elements.estimatedProfit.classList.toggle("positive-text", !isLoss);
+  elements.estimatedProfit.classList.toggle(
+    "positive-text",
+    summary.estimatedResult !== null && !isLoss,
+  );
 
   elements.simulatorQtyButtons.forEach((button) => {
     button.classList.toggle(
@@ -1991,8 +3258,30 @@ function renderBreakEven(summary) {
     ? `${summary.breakEvenUnits} Green Box por mes`
     : "No calculable";
   elements.breakEvenMessage.textContent = summary.breakEvenMessage;
-  elements.breakEvenFixedCosts.textContent = formatMoney(summary.monthlyFixedCosts);
+  elements.breakEvenFixedCosts.textContent = formatMoneyMinorUnits(
+    summary.monthlyFixedCostsDisplayMinorUnits,
+    state.currencySettings.displayCurrency,
+  );
   elements.breakEvenContribution.textContent = formatMoney(summary.contributionPerUnit);
+}
+
+function renderCurrencyStatus() {
+  const { usdArsRate, rateUpdatedAt } = state.currencySettings;
+  const displayCurrency = state.currencySettings.displayCurrency;
+  elements.monthlyEquivalentHeading.textContent = `Equivalente mensual (${displayCurrency})`;
+  elements.monthlyFixedCostsHeading.textContent = `Costos fijos mensuales (${displayCurrency})`;
+
+  if (!CURRENCY.parseDecimal(usdArsRate) || Number(usdArsRate.replace(",", ".")) <= 0) {
+    elements.currencyStatus.textContent =
+      "Sin tipo de cambio configurado. Ingresá ARS por USD y la fecha para convertir importes y calcular los totales en una sola moneda.";
+    elements.currencyStatus.classList.add("currency-status-warning");
+    return;
+  }
+
+  elements.currencyStatus.textContent = `Tipo de cambio manual: 1 USD = ARS ${usdArsRate}${
+    rateUpdatedAt ? ` · actualizado ${rateUpdatedAt}` : " · fecha no informada"
+  }.`;
+  elements.currencyStatus.classList.remove("currency-status-warning");
 }
 
 function renderMigrationStatus() {
@@ -2027,6 +3316,8 @@ function handleTableAction(event) {
     "delete-packaging": deletePackaging,
     "edit-monthly-cost": editMonthlyCost,
     "delete-monthly-cost": deleteMonthlyCost,
+    "edit-purchase-item": editPurchaseItem,
+    "delete-purchase-item": deletePurchaseItem,
   };
 
   handlers[action]?.(id);
@@ -2078,6 +3369,9 @@ function bindEvents() {
   elements.printingWastePercent.addEventListener("input", (event) => {
     updatePrintingWaste(event.target.value);
   });
+  elements.printingElectricityCostInput.addEventListener("input", (event) => {
+    updatePrintingElectricityCost(event.target.value);
+  });
   elements.printingPieceForm.addEventListener("submit", upsertPrintingPiece);
   elements.cancelPrintingPieceEditBtn.addEventListener("click", resetPrintingPieceForm);
   elements.printingPiecesTableBody.addEventListener("click", handleTableAction);
@@ -2104,6 +3398,15 @@ function bindEvents() {
   elements.monthlyCostForm.addEventListener("submit", upsertMonthlyCost);
   elements.cancelMonthlyCostEditBtn.addEventListener("click", resetMonthlyCostForm);
   elements.monthlyCostsTableBody.addEventListener("click", handleTableAction);
+  elements.currencySettingsForm.addEventListener("submit", saveCurrencySettings);
+
+  elements.purchaseItemForm.addEventListener("submit", upsertPurchaseItem);
+  elements.cancelPurchaseItemEditBtn.addEventListener("click", resetPurchaseItemForm);
+  elements.purchaseItemsTableBody.addEventListener("click", handleTableAction);
+  elements.purchaseSourceSelect.addEventListener("change", () => {
+    renderPurchaseSourceDetails();
+    setFormMessage(elements.purchaseItemFormMessage, "", false);
+  });
 
   elements.pricingModeInputs.forEach((input) => {
     input.addEventListener("change", (event) => {
@@ -2180,6 +3483,8 @@ function exposeTestApi() {
     },
     calculateFinancialSummary,
     normalizeImportedState,
+    mergeStatesWithoutDataLoss,
+    stateNeedsCloudMigration,
     createDefaultState,
     formatMoney,
   };

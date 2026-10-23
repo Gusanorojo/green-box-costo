@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: green-box-costo
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GREEN_BOX_WRITE_KEY
+        sync: false

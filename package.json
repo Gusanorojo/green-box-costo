@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check script.js"
+    "test": "node --test tests/currency.test.js",
+    "check": "node --check server.js && node --check currency.js && node --check script.js"
   },
   "dependencies": {
     "pg": "^8.13.1"

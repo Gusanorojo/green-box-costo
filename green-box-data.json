@@ -1,10 +1,10 @@
 {
   "app": "GREEN BOX",
   "type": "green-box-public-data",
-  "version": 2,
+  "version": 6,
   "publishedAt": null,
   "data": {
-    "version": 2,
+    "version": 6,
     "components": [],
     "printing": {
       "filament": {
@@ -14,6 +14,7 @@
       },
       "pieces": [],
       "wastePercent": "",
+      "electricityCostPerBox": "",
       "legacyManualCost": ""
     },
     "supplies": [],
@@ -23,7 +24,13 @@
       "wastePercent": "",
       "warrantyPercent": ""
     },
+    "currencySettings": {
+      "displayCurrency": "ARS",
+      "usdArsRate": "",
+      "rateUpdatedAt": ""
+    },
     "monthlyCosts": [],
+    "purchaseItems": [],
     "pricing": {
       "mode": "manual",
       "manualPrice": "",
